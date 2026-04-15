@@ -1,5 +1,9 @@
-import { useState } from 'react';
-import { Trash2, Timer, ArrowLeft, Plus, X, ClipboardList, Pencil, AlertCircle, Check } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import {
+  Trash2, Timer, ArrowLeft, Plus, X, ClipboardList, Pencil,
+  AlertCircle, Check, Search, ChevronUp, ChevronDown,
+  ArrowRight, Dumbbell, ChevronLeft,
+} from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 
 const LBL = 'block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5';
@@ -59,20 +63,54 @@ const OBJETIVO_COLORS = {
   Resistência:   'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
 };
 
-const EX_VAZIO = { nome: '', series: '', reps: '', carga: '', descanso: '' };
+const EX_DEFAULTS = { series: '3', reps: '10 a 12', carga: '', descanso: '60s' };
 
 export default function Treinos({ fichas, setFichas, exercicios, setExercicios }) {
   const { addToast } = useToast();
   const [fichaSelecionada, setFichaSelecionada] = useState(null);
 
+  /* ── Modal base ── */
   const [modalAberta, setModalAberta]     = useState(false);
   const [fichaEditando, setFichaEditando] = useState(null);
   const [form, setForm]                   = useState({ nome: '', objetivo: 'Hipertrofia', partes: [] });
   const [errosForm, setErrosForm]         = useState({});
   const [exsLocais, setExsLocais]         = useState([]);
-  const [formEx, setFormEx]               = useState(null);
-  const [errosEx, setErrosEx]             = useState({});
 
+  /* ── Wizard ── */
+  const [etapa, setEtapa] = useState(1);
+
+  /* ── Catálogo ── */
+  const [buscaEx, setBuscaEx]     = useState('');
+  const [filtroTab, setFiltroTab] = useState('todos');
+
+  /* ── Edição inline de exercício ── */
+  const [exExpandido, setExExpandido]   = useState(null);
+  const [exInlineForm, setExInlineForm] = useState({});
+  const [errosInline, setErrosInline]   = useState({});
+
+  /* ── Exercício personalizado ── */
+  const [mostrarPersonalizado, setMostrarPersonalizado] = useState(false);
+  const [nomePersonalizado, setNomePersonalizado]       = useState('');
+  const [erroPersonalizado, setErroPersonalizado]       = useState('');
+
+  /* ── Destaque temporário de item recém-adicionado ── */
+  const [exRecenteId, setExRecenteId] = useState(null);
+
+  /* ────────────────────────────── helpers de reset ── */
+  function resetModal() {
+    setEtapa(1);
+    setBuscaEx('');
+    setFiltroTab('todos');
+    setExExpandido(null);
+    setExInlineForm({});
+    setErrosInline({});
+    setMostrarPersonalizado(false);
+    setNomePersonalizado('');
+    setErroPersonalizado('');
+    setExRecenteId(null);
+  }
+
+  /* ────────────────────────────── abrir / fechar ── */
   function abrirModal(ficha = null) {
     setFichaEditando(ficha);
     setForm(ficha
@@ -84,8 +122,7 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
       : []
     );
     setErrosForm({});
-    setFormEx(null);
-    setErrosEx({});
+    resetModal();
     setModalAberta(true);
   }
 
@@ -95,29 +132,36 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
     setForm({ nome: '', objetivo: 'Hipertrofia', partes: [] });
     setExsLocais([]);
     setErrosForm({});
-    setFormEx(null);
-    setErrosEx({});
+    resetModal();
   }
 
+  /* ────────────────────────────── step 1 ── */
   function toggleParte(id) {
     setForm(prev => ({
       ...prev,
-      partes: prev.partes.includes(id) ? prev.partes.filter(p => p !== id) : [...prev.partes, id],
+      partes: prev.partes.includes(id)
+        ? prev.partes.filter(p => p !== id)
+        : [...prev.partes, id],
     }));
     setErrosForm(prev => ({ ...prev, partes: undefined }));
   }
 
-  function salvarFicha(e) {
-    e.preventDefault();
+  function irParaStep2() {
     const errs = {};
-    if (!form.nome.trim()) errs.nome = 'Nome da ficha é obrigatório.';
-    if (form.partes.length === 0) errs.partes = 'Selecione ao menos uma parte do corpo.';
+    if (!form.nome.trim())         errs.nome   = 'Nome da ficha é obrigatório.';
+    if (form.partes.length === 0)  errs.partes = 'Selecione ao menos uma parte do corpo.';
     if (Object.keys(errs).length) {
       setErrosForm(errs);
       addToast('Preencha os campos obrigatórios.', 'error');
       return;
     }
+    setFiltroTab('todos');
+    setBuscaEx('');
+    setEtapa(2);
+  }
 
+  /* ────────────────────────────── salvar ficha ── */
+  function salvarFicha() {
     const dados = { nome: form.nome.trim(), objetivo: form.objetivo, partes: form.partes };
 
     if (fichaEditando) {
@@ -146,84 +190,191 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
     addToast('Ficha excluída.', 'warning');
   }
 
-  function salvarExLocal(e) {
-    e.preventDefault();
-    const errs = {};
-    if (!formEx?.nome?.trim())     errs.nome     = 'Nome obrigatório.';
-    if (!formEx?.series?.trim())   errs.series   = 'Séries obrigatórias.';
-    if (!formEx?.reps?.trim())     errs.reps     = 'Repetições obrigatórias.';
-    if (!formEx?.descanso?.trim()) errs.descanso = 'Descanso obrigatório.';
-    if (Object.keys(errs).length) { setErrosEx(errs); return; }
-
-    if (formEx.id) {
-      setExsLocais(prev => prev.map(ex => ex.id === formEx.id ? { ...formEx } : ex));
-    } else {
-      setExsLocais(prev => [...prev, { ...formEx, id: Date.now() }]);
-    }
-    setFormEx(null);
-    setErrosEx({});
+  /* ────────────────────────────── exercícios ── */
+  function adicionarDoCatalogo(nome) {
+    if (exsLocais.some(ex => ex.nome === nome)) return;
+    const novoEx = { id: Date.now(), nome, ...EX_DEFAULTS };
+    setExsLocais(prev => [...prev, novoEx]);
+    highlight(novoEx.id);
+    addToast(`"${nome}" adicionado à ficha.`, 'success');
   }
 
-  function editarExLocal(ex) {
-    setFormEx({ ...ex });
-    setErrosEx({});
+  function adicionarPersonalizado() {
+    const nome = nomePersonalizado.trim();
+    if (!nome) { setErroPersonalizado('Nome obrigatório.'); return; }
+    if (exsLocais.some(ex => ex.nome === nome)) {
+      setErroPersonalizado('Exercício já adicionado.');
+      return;
+    }
+    const novoEx = { id: Date.now(), nome, ...EX_DEFAULTS };
+    setExsLocais(prev => [...prev, novoEx]);
+    highlight(novoEx.id);
+    setNomePersonalizado('');
+    setErroPersonalizado('');
+    setMostrarPersonalizado(false);
+    addToast(`"${nome}" adicionado à ficha.`, 'success');
   }
 
   function removerExLocal(id) {
-    if (formEx?.id === id) { setFormEx(null); setErrosEx({}); }
-    setExsLocais(prev => prev.filter(ex => ex.id !== id));
+    const ex = exsLocais.find(e => e.id === id);
+    if (exExpandido === id) { setExExpandido(null); setErrosInline({}); }
+    setExsLocais(prev => prev.filter(e => e.id !== id));
+    if (ex) addToast(`"${ex.nome}" removido da ficha.`, 'warning');
   }
 
-  function usarSugestao(nome) {
-    if (formEx !== null && !formEx.id) {
-      setFormEx(prev => ({ ...prev, nome }));
+  function toggleExpandirEx(ex) {
+    if (exExpandido === ex.id) {
+      setExExpandido(null);
+      setErrosInline({});
     } else {
-      setFormEx({ ...EX_VAZIO, nome });
+      setExExpandido(ex.id);
+      setExInlineForm({ series: ex.series, reps: ex.reps, carga: ex.carga, descanso: ex.descanso });
+      setErrosInline({});
     }
-    setErrosEx({});
   }
 
-  const sugestoesUnicas = [...new Set(form.partes.flatMap(p => CATALOGO[p] ?? []))];
-  const nomesAdicionados = new Set(exsLocais.map(ex => ex.nome));
+  function salvarInline(exId) {
+    const errs = {};
+    if (!exInlineForm.series?.trim())   errs.series   = 'Obrigatório.';
+    if (!exInlineForm.reps?.trim())     errs.reps     = 'Obrigatório.';
+    if (!exInlineForm.descanso?.trim()) errs.descanso = 'Obrigatório.';
+    if (Object.keys(errs).length) { setErrosInline(errs); return; }
+    setExsLocais(prev => prev.map(ex => ex.id === exId ? { ...ex, ...exInlineForm } : ex));
+    setExExpandido(null);
+    setErrosInline({});
+  }
+
+  function moverEx(id, delta) {
+    setExsLocais(prev => {
+      const idx = prev.findIndex(ex => ex.id === id);
+      if (idx < 0) return prev;
+      const novoIdx = idx + delta;
+      if (novoIdx < 0 || novoIdx >= prev.length) return prev;
+      const nova = [...prev];
+      [nova[idx], nova[novoIdx]] = [nova[novoIdx], nova[idx]];
+      return nova;
+    });
+  }
+
+  function highlight(id) {
+    setExRecenteId(id);
+    setTimeout(() => setExRecenteId(null), 1800);
+  }
+
+  /* ────────────────────────────── computed ── */
+  const nomesAdicionados = useMemo(
+    () => new Set(exsLocais.map(ex => ex.nome)),
+    [exsLocais]
+  );
+
+  const tabsDisponiveis = useMemo(() => {
+    const base = form.partes.length > 0
+      ? PARTES_CORPO.filter(p => form.partes.includes(p.id))
+      : PARTES_CORPO;
+    return [{ id: 'todos', label: 'Todos' }, ...base];
+  }, [form.partes]);
+
+  const exerciciosCatalogo = useMemo(() => {
+    let lista = [];
+    if (filtroTab === 'todos') {
+      const partes = form.partes.length > 0 ? form.partes : Object.keys(CATALOGO);
+      lista = [...new Set(partes.flatMap(p => CATALOGO[p] ?? []))];
+    } else {
+      lista = CATALOGO[filtroTab] ?? [];
+    }
+    if (buscaEx.trim()) {
+      const q = buscaEx.toLowerCase();
+      lista = lista.filter(n => n.toLowerCase().includes(q));
+    }
+    return lista;
+  }, [filtroTab, buscaEx, form.partes]);
+
   const exerciciosDestaFicha = fichaSelecionada
     ? exercicios.filter(ex => ex.fichaId === fichaSelecionada.id)
     : [];
 
+  /* ════════════════════════════════════════════════════
+     MODAL
+  ════════════════════════════════════════════════════ */
   const fichaModal = modalAberta && (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full max-w-2xl rounded-2xl shadow-2xl shadow-black/20 animate-scale-in flex flex-col max-h-[90vh]">
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full max-w-3xl rounded-2xl shadow-2xl shadow-black/20 animate-scale-in flex flex-col max-h-[90vh]">
 
+        {/* ── Header ── */}
         <div className="shrink-0 flex items-center justify-between px-6 pt-5 pb-4 border-b border-zinc-100 dark:border-zinc-800">
           <div>
             <h3 className="text-base font-bold text-zinc-900 dark:text-white">
               {fichaEditando ? 'Editar Ficha' : 'Nova Ficha de Treino'}
             </h3>
             <p className="text-xs text-zinc-400 mt-0.5">
-              {fichaEditando ? 'Altere as informações, grupos musculares e exercícios.' : 'Configure nome, grupos musculares e monte os exercícios.'}
+              {etapa === 1
+                ? 'Passo 1 de 2 — Informações básicas e grupos musculares'
+                : 'Passo 2 de 2 — Monte os exercícios da ficha'}
             </p>
           </div>
-          <button onClick={fecharModal} className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200">
+          <button
+            onClick={fecharModal}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+          >
             <X size={16} />
           </button>
         </div>
 
-        <form onSubmit={salvarFicha} noValidate className="flex flex-col flex-1 overflow-hidden">
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+        {/* ── Step indicators ── */}
+        <div className="shrink-0 flex items-center px-6 py-3 gap-3 border-b border-zinc-100 dark:border-zinc-800">
+          {[1, 2].map((n, idx) => (
+            <div key={n} className="flex items-center gap-3 flex-1">
+              <div className="flex items-center gap-2">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
+                  etapa > n
+                    ? 'bg-green-500 text-white shadow-md shadow-green-500/25'
+                    : etapa === n
+                    ? 'bg-green-500 text-white shadow-md shadow-green-500/30'
+                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400'
+                }`}>
+                  {etapa > n ? <Check size={12} strokeWidth={3} /> : n}
+                </div>
+                <span className={`text-xs font-semibold transition-colors duration-200 ${
+                  etapa === n ? 'text-zinc-900 dark:text-white' : 'text-zinc-400'
+                }`}>
+                  {n === 1 ? 'Informações' : 'Exercícios'}
+                  {n === 2 && exsLocais.length > 0 && (
+                    <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-green-500/15 text-green-600 dark:text-green-400 text-[10px] font-bold">
+                      {exsLocais.length}
+                    </span>
+                  )}
+                </span>
+              </div>
+              {idx === 0 && <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-700" />}
+            </div>
+          ))}
+        </div>
+
+        {/* ══════════════ STEP 1 — Informações ══════════════ */}
+        {etapa === 1 && (
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 animate-fade-up">
 
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 sm:col-span-1">
                 <label className={LBL}>Nome da Ficha</label>
                 <input
-                  type="text" maxLength={60} value={form.nome}
-                  onChange={e => { setForm(p => ({ ...p, nome: e.target.value })); setErrosForm(p => ({ ...p, nome: undefined })); }}
-                  className={inputCls(!!errosForm.nome)} placeholder="Ex: Treino A — Peito"
-                  autoFocus
+                  type="text" maxLength={60} value={form.nome} autoFocus
+                  onChange={e => {
+                    setForm(p => ({ ...p, nome: e.target.value }));
+                    setErrosForm(p => ({ ...p, nome: undefined }));
+                  }}
+                  className={inputCls(!!errosForm.nome)}
+                  placeholder="Ex: Treino A — Peito e Tríceps"
                 />
                 <FieldError msg={errosForm.nome} />
               </div>
               <div>
                 <label className={LBL}>Objetivo Principal</label>
-                <select value={form.objetivo} onChange={e => setForm(p => ({ ...p, objetivo: e.target.value }))} className={inputCls(false)}>
+                <select
+                  value={form.objetivo}
+                  onChange={e => setForm(p => ({ ...p, objetivo: e.target.value }))}
+                  className={inputCls(false)}
+                >
                   <option value="Hipertrofia">Hipertrofia</option>
                   <option value="Emagrecimento">Emagrecimento</option>
                   <option value="Resistência">Resistência</option>
@@ -234,13 +385,16 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
             <div>
               <div className="flex items-center justify-between mb-3">
                 <label className={LBL + ' mb-0'}>Grupos Musculares</label>
-                {form.partes.length > 0 && (
-                  <span className="text-xs font-semibold text-green-600 dark:text-green-400">
-                    {form.partes.length} selecionado{form.partes.length !== 1 ? 's' : ''}
-                  </span>
-                )}
+                <span className={`text-xs font-semibold transition-colors duration-200 ${
+                  form.partes.length > 0 ? 'text-green-600 dark:text-green-400' : 'text-zinc-400'
+                }`}>
+                  {form.partes.length > 0
+                    ? `${form.partes.length} selecionado${form.partes.length !== 1 ? 's' : ''}`
+                    : 'Nenhum selecionado'}
+                </span>
               </div>
-              <div className="flex flex-wrap gap-2">
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {PARTES_CORPO.map(parte => {
                   const sel = form.partes.includes(parte.id);
                   return (
@@ -248,13 +402,20 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
                       key={parte.id}
                       type="button"
                       onClick={() => toggleParte(parte.id)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all duration-200 ${
+                      className={`flex items-center gap-2.5 px-3.5 py-3 rounded-xl text-sm font-semibold border transition-all duration-200 text-left ${
                         sel
-                          ? 'bg-green-500 text-white border-green-500 shadow-sm shadow-green-500/25 scale-105'
-                          : 'bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-green-400 dark:hover:border-green-500 hover:text-green-600 dark:hover:text-green-400'
+                          ? 'bg-green-500 text-white border-green-500 shadow-md shadow-green-500/20 scale-[1.02]'
+                          : 'bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-green-400/60 hover:bg-green-500/5 hover:text-green-700 dark:hover:text-green-400'
                       }`}
                     >
-                      {sel && <Check size={10} strokeWidth={3} />}
+                      <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-all duration-200 ${
+                        sel ? 'bg-white/25' : 'bg-zinc-200 dark:bg-zinc-700'
+                      }`}>
+                        {sel
+                          ? <Check size={11} strokeWidth={3} className="text-white" />
+                          : <Dumbbell size={10} className="text-zinc-400" />
+                        }
+                      </div>
                       {parte.label}
                     </button>
                   );
@@ -262,198 +423,377 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
               </div>
               <FieldError msg={errosForm.partes} />
             </div>
+          </div>
+        )}
 
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <label className={LBL + ' mb-0'}>
-                  Exercícios
-                  {exsLocais.length > 0 && (
-                    <span className="ml-2 font-normal text-zinc-400 normal-case tracking-normal">{exsLocais.length} adicionado{exsLocais.length !== 1 ? 's' : ''}</span>
+        {/* ══════════════ STEP 2 — Exercícios ══════════════ */}
+        {etapa === 2 && (
+          <div className="flex-1 overflow-hidden flex animate-fade-up">
+
+            {/* ─── Painel esquerdo: Catálogo ─── */}
+            <div className="w-[44%] shrink-0 border-r border-zinc-100 dark:border-zinc-800 flex flex-col overflow-hidden">
+
+              {/* Cabeçalho do catálogo */}
+              <div className="px-4 pt-4 pb-3 space-y-2.5">
+                <p className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">
+                  Catálogo de Exercícios
+                </p>
+
+                {/* Busca */}
+                <div className="relative">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={buscaEx}
+                    onChange={e => setBuscaEx(e.target.value)}
+                    placeholder="Buscar exercício..."
+                    className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl pl-8 pr-7 py-2 text-xs text-zinc-900 dark:text-white placeholder:text-zinc-400 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all duration-200"
+                  />
+                  {buscaEx && (
+                    <button
+                      onClick={() => setBuscaEx('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+                    >
+                      <X size={12} />
+                    </button>
                   )}
-                </label>
+                </div>
+
+                {/* Tabs por grupo muscular */}
+                {!buscaEx && (
+                  <div className="flex gap-1 flex-wrap">
+                    {tabsDisponiveis.map(tab => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setFiltroTab(tab.id)}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all duration-150 ${
+                          filtroTab === tab.id
+                            ? 'bg-green-500 text-white shadow-sm shadow-green-500/25'
+                            : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {exsLocais.length > 0 && (
-                <div className="space-y-2 mb-4">
-                  {exsLocais.map((ex, i) => (
+              {/* Lista de exercícios do catálogo */}
+              <div className="flex-1 overflow-y-auto px-3 pb-2 space-y-0.5">
+                {exerciciosCatalogo.length === 0 ? (
+                  <p className="text-xs text-zinc-400 italic text-center py-8">
+                    {buscaEx ? 'Nenhum resultado encontrado.' : 'Sem exercícios nesta categoria.'}
+                  </p>
+                ) : exerciciosCatalogo.map(nome => {
+                  const adicionado = nomesAdicionados.has(nome);
+                  return (
                     <div
-                      key={ex.id}
-                      className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 ${
-                        formEx?.id === ex.id
-                          ? 'border-blue-400 dark:border-blue-500 bg-blue-500/5'
-                          : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/60'
+                      key={nome}
+                      className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl transition-all duration-150 ${
+                        adicionado
+                          ? 'opacity-45'
+                          : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/60'
                       }`}
                     >
-                      <div className="w-6 h-6 shrink-0 flex items-center justify-center rounded-lg bg-zinc-200 dark:bg-zinc-700 text-xs font-bold text-zinc-500 dark:text-zinc-400">
+                      <span className={`text-xs font-medium leading-tight ${
+                        adicionado
+                          ? 'line-through text-zinc-400 dark:text-zinc-600'
+                          : 'text-zinc-700 dark:text-zinc-300'
+                      }`}>
+                        {nome}
+                      </span>
+                      {adicionado ? (
+                        <Check size={13} className="shrink-0 text-green-500" />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => adicionarDoCatalogo(nome)}
+                          className="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-green-500/10 hover:bg-green-500 text-green-600 dark:text-green-400 hover:text-white transition-all duration-150"
+                          title="Adicionar à ficha"
+                        >
+                          <Plus size={12} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Exercício personalizado */}
+              <div className="px-3 py-3 border-t border-zinc-100 dark:border-zinc-800">
+                {mostrarPersonalizado ? (
+                  <div className="space-y-2 animate-fade-up">
+                    <input
+                      type="text"
+                      value={nomePersonalizado}
+                      onChange={e => { setNomePersonalizado(e.target.value); setErroPersonalizado(''); }}
+                      onKeyDown={e => e.key === 'Enter' && adicionarPersonalizado()}
+                      placeholder="Nome do exercício..."
+                      autoFocus
+                      className={`w-full bg-zinc-50 dark:bg-zinc-800 rounded-xl px-3 py-2 text-xs border outline-none focus:ring-2 transition-all duration-200 text-zinc-900 dark:text-white placeholder:text-zinc-400 ${
+                        erroPersonalizado
+                          ? 'border-red-400 focus:ring-red-400/20'
+                          : 'border-zinc-200 dark:border-zinc-700 focus:ring-green-500/20 focus:border-green-500'
+                      }`}
+                    />
+                    {erroPersonalizado && (
+                      <p className="flex items-center gap-1 text-[11px] text-red-500">
+                        <AlertCircle size={10} strokeWidth={2.5} />{erroPersonalizado}
+                      </p>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setMostrarPersonalizado(false); setNomePersonalizado(''); setErroPersonalizado(''); }}
+                        className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 transition-all duration-150"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={adicionarPersonalizado}
+                        className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold bg-green-500 hover:bg-green-400 text-white shadow-sm shadow-green-500/25 transition-all duration-150"
+                      >
+                        Adicionar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setMostrarPersonalizado(true)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-semibold text-zinc-400 hover:text-green-600 dark:hover:text-green-400 border border-dashed border-zinc-200 dark:border-zinc-700 hover:border-green-400 dark:hover:border-green-500 hover:bg-green-500/5 transition-all duration-200"
+                  >
+                    <Plus size={11} />
+                    Exercício personalizado
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* ─── Painel direito: Exercícios da ficha ─── */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="px-4 pt-4 pb-3 flex items-center justify-between shrink-0">
+                <p className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">
+                  Ficha
+                  {exsLocais.length > 0 && (
+                    <span className="ml-2 normal-case font-normal text-zinc-400">
+                      {exsLocais.length} exercício{exsLocais.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
+                {exsLocais.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full py-10 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-3">
+                      <ClipboardList size={20} className="text-zinc-400" />
+                    </div>
+                    <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Nenhum exercício ainda</p>
+                    <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">Adicione pelo catálogo ao lado</p>
+                  </div>
+                ) : exsLocais.map((ex, i) => (
+                  <div
+                    key={ex.id}
+                    className={`rounded-xl border overflow-hidden transition-all duration-300 ${
+                      exRecenteId === ex.id
+                        ? 'border-green-400 dark:border-green-500 bg-green-500/5 shadow-sm shadow-green-500/10'
+                        : exExpandido === ex.id
+                        ? 'border-blue-400 dark:border-blue-500 bg-blue-500/5'
+                        : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/60'
+                    }`}
+                  >
+                    {/* Linha do exercício */}
+                    <div className="flex items-center gap-2 px-3 py-2.5">
+                      <div className="w-5 h-5 shrink-0 flex items-center justify-center rounded-md bg-zinc-200 dark:bg-zinc-700 text-[10px] font-bold text-zinc-500 dark:text-zinc-400 leading-none">
                         {i + 1}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-zinc-900 dark:text-white truncate">{ex.nome}</p>
-                        <div className="flex items-center gap-3 mt-0.5">
-                          <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                            <span className="text-green-600 dark:text-green-400 font-bold">{ex.series}</span> séries × {ex.reps}
-                          </span>
-                          {ex.carga && <span className="text-xs font-semibold text-orange-500">{ex.carga}</span>}
-                          <span className="flex items-center gap-0.5 text-xs text-zinc-400">
-                            <Timer size={10} />{ex.descanso}
-                          </span>
-                        </div>
+                        <p className="text-xs font-semibold text-zinc-900 dark:text-white truncate">
+                          {ex.nome}
+                        </p>
+                        {exExpandido !== ex.id && (
+                          <div className="flex items-center gap-2.5 mt-0.5 flex-wrap">
+                            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                              <span className="text-green-600 dark:text-green-400 font-bold">{ex.series}</span>
+                              {' '}×{' '}{ex.reps}
+                            </span>
+                            {ex.carga && (
+                              <span className="text-[10px] font-semibold text-orange-500">{ex.carga}</span>
+                            )}
+                            <span className="flex items-center gap-0.5 text-[10px] text-zinc-400">
+                              <Timer size={9} />{ex.descanso}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-0.5 shrink-0">
+                        {/* Reordenar */}
+                        <div className="flex flex-col mr-0.5">
+                          <button
+                            type="button"
+                            onClick={() => moverEx(ex.id, -1)}
+                            disabled={i === 0}
+                            className="p-0.5 text-zinc-300 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-300 disabled:opacity-20 transition-colors duration-150"
+                            title="Mover para cima"
+                          >
+                            <ChevronUp size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moverEx(ex.id, 1)}
+                            disabled={i === exsLocais.length - 1}
+                            className="p-0.5 text-zinc-300 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-300 disabled:opacity-20 transition-colors duration-150"
+                            title="Mover para baixo"
+                          >
+                            <ChevronDown size={12} />
+                          </button>
+                        </div>
+                        {/* Editar */}
                         <button
                           type="button"
-                          onClick={() => editarExLocal(ex)}
-                          className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all duration-200"
-                          title="Editar"
+                          onClick={() => toggleExpandirEx(ex)}
+                          className={`p-1.5 rounded-lg transition-all duration-200 ${
+                            exExpandido === ex.id
+                              ? 'text-blue-500 bg-blue-50 dark:bg-blue-500/10'
+                              : 'text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10'
+                          }`}
+                          title="Editar detalhes"
                         >
-                          <Pencil size={13} />
+                          <Pencil size={11} />
                         </button>
+                        {/* Remover */}
                         <button
                           type="button"
                           onClick={() => removerExLocal(ex.id)}
                           className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all duration-200"
                           title="Remover"
                         >
-                          <Trash2 size={13} />
+                          <Trash2 size={11} />
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
 
-              {sugestoesUnicas.length > 0 && (
-                <div className="mb-4">
-                  <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500 mb-2">
-                    Sugestões para os grupos selecionados — clique para pré-preencher:
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {sugestoesUnicas.map(s => {
-                      const adicionado = nomesAdicionados.has(s);
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => !adicionado && usarSugestao(s)}
-                          disabled={adicionado}
-                          className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border transition-all duration-200 ${
-                            adicionado
-                              ? 'opacity-40 cursor-default bg-zinc-100 dark:bg-zinc-800 text-zinc-400 border-zinc-200 dark:border-zinc-700 line-through'
-                              : 'bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:bg-green-500 hover:text-white hover:border-green-500 cursor-pointer'
-                          }`}
-                        >
-                          {adicionado ? <Check size={9} strokeWidth={3} /> : <Plus size={9} />}
-                          {s}
-                        </button>
-                      );
-                    })}
+                    {/* Formulário inline accordion */}
+                    {exExpandido === ex.id && (
+                      <div className="px-3 pb-3 pt-2.5 border-t border-blue-100 dark:border-blue-500/20 space-y-2.5 animate-fade-up">
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { key: 'series',   label: 'Séries',       ph: '4',       req: true  },
+                            { key: 'reps',     label: 'Repetições',   ph: '10 a 12', req: true  },
+                            { key: 'carga',    label: 'Carga (opc.)', ph: '25kg',    req: false },
+                            { key: 'descanso', label: 'Descanso',     ph: '60s',     req: true  },
+                          ].map(({ key, label, ph, req }) => (
+                            <div key={key}>
+                              <label className="block text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-1">
+                                {label}
+                              </label>
+                              <input
+                                type="text"
+                                maxLength={key === 'reps' ? 20 : 10}
+                                value={exInlineForm[key] ?? ''}
+                                autoFocus={key === 'series'}
+                                onChange={e => {
+                                  setExInlineForm(p => ({ ...p, [key]: e.target.value }));
+                                  if (req) setErrosInline(p => ({ ...p, [key]: undefined }));
+                                }}
+                                placeholder={`Ex: ${ph}`}
+                                className={`w-full bg-white dark:bg-zinc-900 rounded-lg px-2.5 py-1.5 text-xs border outline-none focus:ring-2 transition-all duration-200 text-zinc-900 dark:text-white placeholder:text-zinc-400 ${
+                                  errosInline[key]
+                                    ? 'border-red-400 focus:ring-red-400/20'
+                                    : 'border-zinc-200 dark:border-zinc-700 focus:ring-blue-500/20 focus:border-blue-400'
+                                }`}
+                              />
+                              {errosInline[key] && (
+                                <p className="flex items-center gap-0.5 text-[10px] text-red-500 mt-0.5">
+                                  <AlertCircle size={9} strokeWidth={2.5} />{errosInline[key]}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex gap-2 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => { setExExpandido(null); setErrosInline({}); }}
+                            className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 transition-all duration-150"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => salvarInline(ex.id)}
+                            className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold bg-blue-500 hover:bg-blue-400 text-white shadow-sm shadow-blue-500/25 transition-all duration-150"
+                          >
+                            Confirmar
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
-
-              {formEx !== null ? (
-                <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl p-4 bg-white dark:bg-zinc-900 space-y-3 animate-fade-up">
-                  <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                    {formEx.id ? 'Editando exercício' : 'Novo exercício'}
-                  </p>
-                  <div>
-                    <label className={LBL}>Nome do Exercício</label>
-                    <input
-                      type="text" maxLength={60} value={formEx.nome}
-                      onChange={e => { setFormEx(p => ({ ...p, nome: e.target.value })); setErrosEx(p => ({ ...p, nome: undefined })); }}
-                      className={inputCls(!!errosEx.nome)} placeholder="Ex: Supino Reto"
-                      autoFocus
-                    />
-                    <FieldError msg={errosEx.nome} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className={LBL}>Séries</label>
-                      <input
-                        type="text" maxLength={5} value={formEx.series}
-                        onChange={e => { setFormEx(p => ({ ...p, series: e.target.value })); setErrosEx(p => ({ ...p, series: undefined })); }}
-                        className={inputCls(!!errosEx.series)} placeholder="Ex: 4"
-                      />
-                      <FieldError msg={errosEx.series} />
-                    </div>
-                    <div>
-                      <label className={LBL}>Repetições</label>
-                      <input
-                        type="text" maxLength={20} value={formEx.reps}
-                        onChange={e => { setFormEx(p => ({ ...p, reps: e.target.value })); setErrosEx(p => ({ ...p, reps: undefined })); }}
-                        className={inputCls(!!errosEx.reps)} placeholder="Ex: 10 a 12"
-                      />
-                      <FieldError msg={errosEx.reps} />
-                    </div>
-                    <div>
-                      <label className={LBL}>Carga (opcional)</label>
-                      <input
-                        type="text" maxLength={10} value={formEx.carga}
-                        onChange={e => setFormEx(p => ({ ...p, carga: e.target.value }))}
-                        className={inputCls(false)} placeholder="Ex: 25kg"
-                      />
-                    </div>
-                    <div>
-                      <label className={LBL}>Descanso</label>
-                      <input
-                        type="text" maxLength={10} value={formEx.descanso}
-                        onChange={e => { setFormEx(p => ({ ...p, descanso: e.target.value })); setErrosEx(p => ({ ...p, descanso: undefined })); }}
-                        className={inputCls(!!errosEx.descanso)} placeholder="Ex: 60s"
-                      />
-                      <FieldError msg={errosEx.descanso} />
-                    </div>
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => { setFormEx(null); setErrosEx({}); }}
-                      className="flex-1 py-2 rounded-xl text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-all duration-200"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={salvarExLocal}
-                      className="flex-1 py-2 rounded-xl text-xs font-semibold bg-green-500 hover:bg-green-400 text-white shadow-sm shadow-green-500/25 transition-all duration-200"
-                    >
-                      {formEx.id ? 'Salvar Alterações' : 'Adicionar à Ficha'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => { setFormEx({ ...EX_VAZIO }); setErrosEx({}); }}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-zinc-500 dark:text-zinc-400 border border-dashed border-zinc-300 dark:border-zinc-700 hover:border-green-400 dark:hover:border-green-500 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-500/5 transition-all duration-200"
-                >
-                  <Plus size={14} />
-                  Adicionar Exercício Manualmente
-                </button>
-              )}
+                ))}
+              </div>
             </div>
-
           </div>
+        )}
 
-          <div className="shrink-0 flex gap-3 px-6 py-4 border-t border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-            <button
-              type="button"
-              onClick={fecharModal}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-all duration-200"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="flex-1 bg-green-500 hover:bg-green-400 text-white font-semibold py-2.5 rounded-xl shadow-md shadow-green-500/25 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
-            >
-              {fichaEditando ? 'Salvar Alterações' : 'Criar Ficha'}
-            </button>
-          </div>
-        </form>
+        {/* ── Footer / Navegação ── */}
+        <div className="shrink-0 flex gap-3 px-6 py-4 border-t border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 rounded-b-2xl">
+          {etapa === 1 ? (
+            <>
+              <button
+                type="button"
+                onClick={fecharModal}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-all duration-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={irParaStep2}
+                className="flex-1 flex items-center justify-center gap-2 bg-green-500 hover:bg-green-400 text-white font-semibold py-2.5 rounded-xl shadow-md shadow-green-500/25 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+              >
+                Próximo
+                <ArrowRight size={15} />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setEtapa(1)}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-all duration-200"
+              >
+                <ChevronLeft size={15} />
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={fecharModal}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-all duration-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={salvarFicha}
+                className="flex-1 bg-green-500 hover:bg-green-400 text-white font-semibold py-2.5 rounded-xl shadow-md shadow-green-500/25 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+              >
+                {fichaEditando ? 'Salvar Alterações' : 'Criar Ficha'}
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 
+  /* ════════════════════════════════════════════════════
+     DETALHE DA FICHA
+  ════════════════════════════════════════════════════ */
   if (fichaSelecionada) {
     const partes = fichaSelecionada.partes ?? [];
     return (
@@ -473,7 +813,9 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
                 {fichaSelecionada.objetivo}
               </span>
             </div>
-            <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight mb-2">{fichaSelecionada.nome}</h2>
+            <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight mb-2">
+              {fichaSelecionada.nome}
+            </h2>
             {partes.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {partes.map(pId => {
@@ -501,7 +843,12 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
             <thead>
               <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/40">
                 {['Exercício', 'Séries', 'Repetições', 'Carga', 'Descanso'].map(h => (
-                  <th key={h} className={`px-5 py-3.5 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider ${h !== 'Exercício' ? 'text-center' : ''}`}>{h}</th>
+                  <th
+                    key={h}
+                    className={`px-5 py-3.5 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider ${h !== 'Exercício' ? 'text-center' : ''}`}
+                  >
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -510,7 +857,9 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
                 <tr key={ex.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors duration-150">
                   <td className="px-5 py-4 font-semibold text-zinc-900 dark:text-white">{ex.nome}</td>
                   <td className="px-5 py-4 text-center">
-                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 font-bold text-sm">{ex.series}</span>
+                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 font-bold text-sm">
+                      {ex.series}
+                    </span>
                   </td>
                   <td className="px-5 py-4 text-center text-zinc-600 dark:text-zinc-300 font-medium">{ex.reps}</td>
                   <td className="px-5 py-4 text-center">
@@ -544,6 +893,9 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
     );
   }
 
+  /* ════════════════════════════════════════════════════
+     LISTA DE FICHAS
+  ════════════════════════════════════════════════════ */
   return (
     <div>
       <header className="flex items-start justify-between mb-7">
@@ -577,7 +929,10 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
             const qtd    = exercicios.filter(ex => ex.fichaId === ficha.id).length;
             const partes = ficha.partes ?? [];
             return (
-              <div key={ficha.id} className="group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 hover:border-green-500/40 hover:shadow-md hover:shadow-zinc-200/60 dark:hover:shadow-black/30 hover:-translate-y-0.5 transition-all duration-300 flex flex-col">
+              <div
+                key={ficha.id}
+                className="group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 hover:border-green-500/40 hover:shadow-md hover:shadow-zinc-200/60 dark:hover:shadow-black/30 hover:-translate-y-0.5 transition-all duration-300 flex flex-col"
+              >
                 <div className="flex items-start justify-between mb-3">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${OBJETIVO_COLORS[ficha.objetivo] ?? OBJETIVO_COLORS.Hipertrofia}`}>
                     {ficha.objetivo}
@@ -600,7 +955,9 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
                   </div>
                 </div>
 
-                <h3 className="text-sm font-bold text-zinc-900 dark:text-white mb-2 leading-snug">{ficha.nome}</h3>
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-white mb-2 leading-snug">
+                  {ficha.nome}
+                </h3>
 
                 {partes.length > 0 && (
                   <div className="flex flex-wrap gap-1 mb-3">
