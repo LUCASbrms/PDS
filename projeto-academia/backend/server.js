@@ -4,11 +4,9 @@ require('dotenv').config();
 
 const app = express();
 
-// Middlewares (Configurações básicas)
 app.use(cors());
-app.use(express.json()); 
+app.use(express.json());
 
-// Rota de teste
 app.get('/', (req, res) => {
   res.send('Servidor da Academia rodando perfeitamente! 🚀');
 });

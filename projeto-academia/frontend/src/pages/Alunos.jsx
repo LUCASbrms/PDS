@@ -1,197 +1,248 @@
 import { useState } from 'react';
+import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
 
-// AGORA ELE RECEBE "alunos" E "setAlunos" DO PAI (App.jsx)
-export default function Alunos({ alunos, setAlunos }) {
-  // 2. Estado para controlar SE estamos vendo a lista ou o formulário
-  const [exibindoCadastro, setExibindoCadastro] = useState(false);
+function mascaraCPF(v) {
+  return v.replace(/\D/g, '')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+    .slice(0, 14);
+}
+
+function mascaraTelefone(v) {
+  const n = v.replace(/\D/g, '').slice(0, 11);
+  if (n.length <= 2)  return `(${n}`;
+  if (n.length <= 6)  return `(${n.slice(0,2)}) ${n.slice(2)}`;
+  if (n.length <= 10) return `(${n.slice(0,2)}) ${n.slice(2,6)}-${n.slice(6)}`;
+  return `(${n.slice(0,2)}) ${n.slice(2,7)}-${n.slice(7)}`;
+}
+
+function inputCls(hasError) {
+  return [
+    'w-full bg-zinc-50 dark:bg-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm',
+    'text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-500',
+    'outline-none focus:ring-2 transition-all duration-200',
+    hasError
+      ? 'border border-red-400 dark:border-red-500 focus:ring-red-400/20 focus:border-red-400'
+      : 'border border-zinc-200 dark:border-zinc-700 focus:ring-green-500/20 focus:border-green-500',
+  ].join(' ');
+}
+
+const LBL = 'block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5';
+
+function FieldError({ msg }) {
+  if (!msg) return null;
+  return (
+    <p className="flex items-center gap-1 text-xs text-red-500 mt-1.5">
+      <AlertCircle size={11} strokeWidth={2.5} />
+      {msg}
+    </p>
+  );
+}
+
+function StatusBadge({ status }) {
+  const map = {
+    Ativo:    'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20',
+    Pendente: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20',
+    Inativo:  'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-600',
+  };
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${map[status] ?? map.Inativo}`}>
+      {status}
+    </span>
+  );
+}
+
+const FORM_VAZIO = {
+  nome: '', nascimento: '', cpf: '', telefone: '',
+  altura: '', peso: '', plano: 'Mensal', vencimento: '', fichaId: '',
+};
+
+export default function Alunos({ alunos, setAlunos, fichas }) {
+  const { addToast } = useToast();
+  const [exibindoForm, setExibindoForm] = useState(false);
+  const [alunoEditando, setAlunoEditando] = useState(null);
   const [busca, setBusca] = useState('');
+  const [erros, setErros] = useState({});
 
-  // 3. Estados dos campos do formulário
-  const [nomeInput, setNomeInput] = useState('');
-  const [nascimentoInput, setNascimentoInput] = useState('');
-  const [cpfInput, setCpfInput] = useState('');
-  const [telefoneInput, setTelefoneInput] = useState('');
-  const [alturaInput, setAlturaInput] = useState('');
-  const [pesoInput, setPesoInput] = useState('');
-  
-  // Dados do plano (para já matricular o aluno no cadastro)
-  const [planoInput, setPlanoInput] = useState('Mensal');
-  const [vencimentoInput, setVencimentoInput] = useState('');
+  const [form, setForm] = useState(FORM_VAZIO);
 
-  // --- FUNÇÕES ---
+  function set(campo, valor) {
+    setForm(prev => ({ ...prev, [campo]: valor }));
+    if (erros[campo]) setErros(prev => ({ ...prev, [campo]: null }));
+  }
+
+  function abrirNovo() {
+    setAlunoEditando(null);
+    setForm(FORM_VAZIO);
+    setErros({});
+    setExibindoForm(true);
+  }
+
+  function abrirEdicao(aluno) {
+    setAlunoEditando(aluno);
+    setForm({
+      nome:        aluno.nome,
+      nascimento:  aluno.nascimento,
+      cpf:         aluno.cpf,
+      telefone:    aluno.telefone,
+      altura:      aluno.altura,
+      peso:        aluno.peso,
+      plano:       aluno.plano,
+      vencimento:  aluno.vencimento,
+      fichaId:     aluno.fichaId || '',
+    });
+    setErros({});
+    setExibindoForm(true);
+  }
+
+  function fecharForm() {
+    setExibindoForm(false);
+    setAlunoEditando(null);
+    setForm(FORM_VAZIO);
+    setErros({});
+  }
+
+  function validar() {
+    const e = {};
+    if (!form.nome.trim())                                   e.nome = 'Nome é obrigatório';
+    if (!form.nascimento)                                    e.nascimento = 'Data de nascimento obrigatória';
+    const cpfDigits = form.cpf.replace(/\D/g, '');
+    if (cpfDigits.length !== 11)                             e.cpf = 'CPF inválido — informe 11 dígitos';
+    const telDigits = form.telefone.replace(/\D/g, '');
+    if (telDigits.length < 10)                               e.telefone = 'Telefone inválido';
+    const alt = parseFloat(form.altura);
+    if (!form.altura || isNaN(alt) || alt < 0.5 || alt > 2.5) e.altura = 'Altura entre 0,50 e 2,50 m';
+    const peso = parseFloat(form.peso);
+    if (!form.peso || isNaN(peso) || peso <= 0)              e.peso = 'Peso inválido';
+    if (!form.vencimento)                                    e.vencimento = 'Data de vencimento obrigatória';
+    setErros(e);
+    return Object.keys(e).length === 0;
+  }
 
   function salvarAluno(e) {
     e.preventDefault();
-    const novoAluno = {
-      id: Date.now(),
-      nome: nomeInput,
-      nascimento: nascimentoInput,
-      cpf: cpfInput,
-      telefone: telefoneInput,
-      altura: alturaInput,
-      peso: pesoInput,
-      plano: planoInput,
-      vencimento: vencimentoInput,
-      status: 'Ativo'
-    };
-    
-    setAlunos([...alunos, novoAluno]);
-    
-    // Limpa o formulário e volta para a lista
-    limparFormulario();
-    setExibindoCadastro(false);
-  }
-
-  function limparFormulario() {
-    setNomeInput(''); setNascimentoInput(''); setCpfInput(''); 
-    setTelefoneInput(''); setAlturaInput(''); setPesoInput('');
-    setPlanoInput('Mensal'); setVencimentoInput('');
+    if (!validar()) {
+      addToast('Corrija os campos destacados antes de continuar.', 'error');
+      return;
+    }
+    if (alunoEditando) {
+      setAlunos(alunos.map(a => a.id === alunoEditando.id ? { ...a, ...form } : a));
+      addToast('Aluno atualizado com sucesso!', 'success');
+    } else {
+      setAlunos([...alunos, { id: Date.now(), ...form, status: 'Ativo' }]);
+      addToast('Aluno cadastrado com sucesso!', 'success');
+    }
+    fecharForm();
   }
 
   function excluirAluno(id) {
-    if (confirm("Tem certeza que deseja excluir este aluno?")) {
-      setAlunos(alunos.filter(aluno => aluno.id !== id));
+    if (confirm('Tem certeza que deseja excluir este aluno?')) {
+      setAlunos(alunos.filter(a => a.id !== id));
+      addToast('Aluno excluído.', 'warning');
     }
   }
 
-  const alunosFiltrados = alunos.filter(aluno => 
-    aluno.nome.toLowerCase().includes(busca.toLowerCase())
+  function atualizarFichaAluno(id, novaFichaId) {
+    setAlunos(alunos.map(a => a.id === id ? { ...a, fichaId: novaFichaId } : a));
+    addToast('Ficha de treino atualizada.', 'info');
+  }
+
+  const alunosFiltrados = alunos.filter(a =>
+    a.nome.toLowerCase().includes(busca.toLowerCase())
   );
 
-  return (
-    <div className="relative">
-      
-      {/* ========================================================= */}
-      {/* MODO 1: TELA DE LISTA DE ALUNOS (Só aparece se exibindoCadastro for false) */}
-      {/* ========================================================= */}
-      {!exibindoCadastro && (
-        <>
-          <header className="flex justify-between items-center mb-10">
-            <div>
-              <h2 className="text-3xl font-bold text-white">Gerenciar Alunos</h2>
-              <p className="text-gray-400 mt-1">Lista completa de alunos matriculados.</p>
-            </div>
-            <button 
-              onClick={() => setExibindoCadastro(true)} // Muda a tela para o formulário
-              className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-lg shadow-lg shadow-green-900/50 transition-all transform hover:scale-105"
-            >
-              + Novo Aluno
-            </button>
-          </header>
+  if (exibindoForm) {
+    return (
+      <div className="animate-fade-up max-w-3xl">
+        <button
+          onClick={fecharForm}
+          className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white mb-6 transition-colors duration-200 group"
+        >
+          <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform duration-200" />
+          Voltar para lista
+        </button>
 
-          <div className="mb-6 relative max-w-md">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">🔍</span>
-            <input 
-              type="text" placeholder="Buscar aluno pelo nome..." value={busca} onChange={(e) => setBusca(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 pl-10 pr-4 text-white outline-none focus:ring-2 focus:ring-green-500 transition-all"
-            />
-          </div>
-          
-          <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden shadow-md">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-800/50 border-b border-gray-700 text-gray-400 text-sm uppercase tracking-wider">
-                  <th className="p-4 font-semibold">Nome e Contato</th>
-                  <th className="p-4 font-semibold">Físico</th>
-                  <th className="p-4 font-semibold">Plano</th>
-                  <th className="p-4 font-semibold text-center">Status</th>
-                  <th className="p-4 font-semibold text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800">
-                {alunosFiltrados.length > 0 ? alunosFiltrados.map((aluno) => (
-                  <tr key={aluno.id} className="hover:bg-gray-800/30 transition-colors">
-                    <td className="p-4">
-                      <div className="text-white font-medium">{aluno.nome}</div>
-                      <div className="text-sm text-gray-500">{aluno.telefone}</div>
-                    </td>
-                    <td className="p-4">
-                      <div className="text-gray-300">{aluno.peso}kg</div>
-                      <div className="text-sm text-gray-500">{aluno.altura}m</div>
-                    </td>
-                    <td className="p-4">
-                      <div className="text-gray-300">{aluno.plano}</div>
-                      <div className="text-sm text-gray-500">Vence: {aluno.vencimento}</div>
-                    </td>
-                    <td className="p-4 text-center">
-                      <span className={`px-2 py-1 text-xs font-bold rounded ${aluno.status === 'Ativo' ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-500'}`}>
-                        {aluno.status}
-                      </span>
-                    </td>
-                    <td className="p-4 text-center">
-                      <button onClick={() => excluirAluno(aluno.id)} className="text-gray-500 hover:text-red-500 transition-colors p-2" title="Excluir Aluno">
-                        🗑️
-                      </button>
-                    </td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan="5" className="p-10 text-center text-gray-500 italic">Nenhum aluno encontrado.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
+        <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight mb-6">
+          {alunoEditando ? 'Editar Aluno' : 'Ficha de Matrícula'}
+        </h2>
 
-      {/* ========================================================= */}
-      {/* MODO 2: TELA DE CADASTRO (Só aparece se exibindoCadastro for true) */}
-      {/* ========================================================= */}
-      {exibindoCadastro && (
-        <div className="max-w-4xl mx-auto">
-          <header className="flex justify-between items-center mb-8">
-            <div>
-              <button 
-                onClick={() => setExibindoCadastro(false)} 
-                className="text-gray-500 hover:text-white flex items-center gap-2 mb-2 transition-colors"
-              >
-                ← Voltar para lista
-              </button>
-              <h2 className="text-3xl font-bold text-white">Ficha de Matrícula</h2>
-            </div>
-          </header>
-
-          <form onSubmit={salvarAluno} className="bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-xl">
-            
-            {/* SEÇÃO 1: DADOS PESSOAIS */}
-            <h3 className="text-lg font-bold text-green-500 mb-4 border-b border-gray-800 pb-2">Dados Pessoais</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <form onSubmit={salvarAluno} noValidate className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-7 space-y-7 shadow-sm">
+          <section>
+            <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">Dados Pessoais</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Nome Completo</label>
-                <input required type="text" value={nomeInput} onChange={(e) => setNomeInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white outline-none focus:ring-2 focus:ring-green-500" placeholder="Ex: Pedro Alvares" />
+                <label className={LBL}>Nome Completo</label>
+                <input
+                  type="text" maxLength={80} value={form.nome}
+                  onChange={e => set('nome', e.target.value)}
+                  className={inputCls(!!erros.nome)} placeholder="Ex: Pedro Alvares"
+                />
+                <FieldError msg={erros.nome} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Data de Nascimento</label>
-                <input required type="date" value={nascimentoInput} onChange={(e) => setNascimentoInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white outline-none focus:ring-2 focus:ring-green-500" />
+                <label className={LBL}>Data de Nascimento</label>
+                <input
+                  type="date" value={form.nascimento}
+                  onChange={e => set('nascimento', e.target.value)}
+                  className={inputCls(!!erros.nascimento)}
+                />
+                <FieldError msg={erros.nascimento} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">CPF</label>
-                <input required type="text" value={cpfInput} onChange={(e) => setCpfInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white outline-none focus:ring-2 focus:ring-green-500" placeholder="000.000.000-00" />
+                <label className={LBL}>CPF</label>
+                <input
+                  type="text" inputMode="numeric" value={form.cpf}
+                  onChange={e => set('cpf', mascaraCPF(e.target.value))}
+                  className={inputCls(!!erros.cpf)} placeholder="000.000.000-00"
+                  maxLength={14}
+                />
+                <FieldError msg={erros.cpf} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Telefone / WhatsApp</label>
-                <input required type="text" value={telefoneInput} onChange={(e) => setTelefoneInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white outline-none focus:ring-2 focus:ring-green-500" placeholder="(11) 90000-0000" />
+                <label className={LBL}>Telefone / WhatsApp</label>
+                <input
+                  type="text" inputMode="numeric" value={form.telefone}
+                  onChange={e => set('telefone', mascaraTelefone(e.target.value))}
+                  className={inputCls(!!erros.telefone)} placeholder="(11) 90000-0000"
+                  maxLength={15}
+                />
+                <FieldError msg={erros.telefone} />
               </div>
             </div>
+          </section>
 
-            {/* SEÇÃO 2: AVALIAÇÃO FÍSICA BÁSICA */}
-            <h3 className="text-lg font-bold text-green-500 mb-4 border-b border-gray-800 pb-2">Medidas Corporais</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <section>
+            <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">Medidas Corporais</h3>
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Altura (m)</label>
-                <input required type="number" step="0.01" value={alturaInput} onChange={(e) => setAlturaInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white outline-none focus:ring-2 focus:ring-green-500" placeholder="Ex: 1.75" />
+                <label className={LBL}>Altura (m)</label>
+                <input
+                  type="number" step="0.01" min="0.5" max="2.5" value={form.altura}
+                  onChange={e => set('altura', e.target.value)}
+                  className={inputCls(!!erros.altura)} placeholder="1.75"
+                />
+                <FieldError msg={erros.altura} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Peso (kg)</label>
-                <input required type="number" step="0.1" value={pesoInput} onChange={(e) => setPesoInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white outline-none focus:ring-2 focus:ring-green-500" placeholder="Ex: 80.5" />
+                <label className={LBL}>Peso (kg)</label>
+                <input
+                  type="number" step="0.1" min="1" max="999" value={form.peso}
+                  onChange={e => set('peso', e.target.value)}
+                  className={inputCls(!!erros.peso)} placeholder="80.5"
+                />
+                <FieldError msg={erros.peso} />
               </div>
             </div>
+          </section>
 
-            {/* SEÇÃO 3: PLANO ESCOLHIDO */}
-            <h3 className="text-lg font-bold text-green-500 mb-4 border-b border-gray-800 pb-2">Matrícula</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <section>
+            <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">Matrícula e Treino</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Plano Escolhido</label>
-                <select value={planoInput} onChange={(e) => setPlanoInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white outline-none focus:ring-2 focus:ring-green-500">
+                <label className={LBL}>Plano</label>
+                <select value={form.plano} onChange={e => set('plano', e.target.value)} className={inputCls(false)}>
                   <option>Mensal</option>
                   <option>Trimestral</option>
                   <option>Semestral</option>
@@ -199,24 +250,137 @@ export default function Alunos({ alunos, setAlunos }) {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Primeiro Vencimento</label>
-                <input required type="date" value={vencimentoInput} onChange={(e) => setVencimentoInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white outline-none focus:ring-2 focus:ring-green-500" />
+                <label className={LBL}>Primeiro Vencimento</label>
+                <input
+                  type="date" value={form.vencimento}
+                  onChange={e => set('vencimento', e.target.value)}
+                  className={inputCls(!!erros.vencimento)}
+                />
+                <FieldError msg={erros.vencimento} />
+              </div>
+              <div>
+                <label className={LBL}>Ficha de Treino</label>
+                <select value={form.fichaId} onChange={e => set('fichaId', e.target.value)} className={inputCls(false)}>
+                  <option value="">Sem ficha vinculada</option>
+                  {fichas.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                </select>
               </div>
             </div>
+          </section>
 
-            {/* BOTÕES DE AÇÃO */}
-            <div className="flex gap-4 pt-4 border-t border-gray-800">
-              <button type="button" onClick={() => setExibindoCadastro(false)} className="px-8 py-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-lg transition-colors">
-                Cancelar
-              </button>
-              <button type="submit" className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg shadow-lg transition-colors">
-                Salvar Matrícula
-              </button>
-            </div>
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button" onClick={fecharForm}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-all duration-200"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="flex-1 bg-green-500 hover:bg-green-400 active:bg-green-600 text-white font-semibold py-2.5 rounded-xl shadow-md shadow-green-500/25 hover:shadow-green-500/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+            >
+              {alunoEditando ? 'Salvar Alterações' : 'Salvar Matrícula'}
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
 
-          </form>
+  return (
+    <div>
+      <header className="flex items-start justify-between mb-7">
+        <div>
+          <p className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-1">Gestão</p>
+          <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">Alunos</h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+            {alunos.length} aluno{alunos.length !== 1 ? 's' : ''} cadastrado{alunos.length !== 1 ? 's' : ''}
+          </p>
         </div>
-      )}
+        <button
+          onClick={abrirNovo}
+          className="flex items-center gap-2 bg-green-500 hover:bg-green-400 active:bg-green-600 text-white font-semibold px-4 py-2.5 rounded-xl text-sm shadow-md shadow-green-500/25 hover:shadow-green-500/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+        >
+          <UserPlus size={15} />
+          Novo Aluno
+        </button>
+      </header>
+
+      <div className="mb-5 relative max-w-sm">
+        <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+        <input
+          type="text" placeholder="Buscar aluno pelo nome..." value={busca}
+          onChange={e => setBusca(e.target.value)}
+          className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all duration-200"
+        />
+      </div>
+
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/40">
+              {['Aluno', 'Físico', 'Plano', 'Treino', 'Status', 'Ações'].map(h => (
+                <th key={h} className={`px-5 py-3.5 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider ${h === 'Status' || h === 'Ações' ? 'text-center' : ''}`}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            {alunosFiltrados.length > 0 ? alunosFiltrados.map(aluno => (
+              <tr key={aluno.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors duration-150">
+                <td className="px-5 py-4">
+                  <p className="font-semibold text-zinc-900 dark:text-white">{aluno.nome}</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">{aluno.telefone}</p>
+                </td>
+                <td className="px-5 py-4">
+                  <p className="text-zinc-700 dark:text-zinc-300 font-medium">{aluno.peso} kg</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">{aluno.altura} m</p>
+                </td>
+                <td className="px-5 py-4">
+                  <p className="text-zinc-700 dark:text-zinc-300 font-medium">{aluno.plano}</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">Vence: {aluno.vencimento}</p>
+                </td>
+                <td className="px-5 py-4">
+                  <select
+                    value={aluno.fichaId || ''}
+                    onChange={e => atualizarFichaAluno(aluno.id, e.target.value)}
+                    className="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-800 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 transition-all duration-200 max-w-[140px]"
+                  >
+                    <option value="">Sem ficha</option>
+                    {fichas.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                  </select>
+                </td>
+                <td className="px-5 py-4 text-center">
+                  <StatusBadge status={aluno.status} />
+                </td>
+                <td className="px-5 py-4">
+                  <div className="flex items-center justify-center gap-1">
+                    <button
+                      onClick={() => abrirEdicao(aluno)}
+                      className="p-2 rounded-lg text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all duration-200"
+                      title="Editar Aluno"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => excluirAluno(aluno.id)}
+                      className="p-2 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all duration-200"
+                      title="Excluir Aluno"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan="6" className="px-5 py-14 text-center text-sm text-zinc-400 italic">
+                  Nenhum aluno encontrado.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

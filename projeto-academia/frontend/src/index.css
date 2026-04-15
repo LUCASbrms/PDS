@@ -1,1 +1,38 @@
 @import "tailwindcss";
+@variant dark (&:where(.dark, .dark *));
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(calc(100% + 24px)); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translateX(0); max-height: 120px; margin-bottom: 0; }
+  to   { opacity: 0; transform: translateX(calc(100% + 24px)); max-height: 0; margin-bottom: -10px; }
+}
+
+@keyframes progress-bar {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+
+.animate-fade-up   { animation: fade-up   0.28s ease-out forwards; }
+.animate-scale-in  { animation: scale-in  0.2s  ease-out forwards; }
+.animate-slide-in  { animation: slide-in  0.22s ease-out forwards; }
+.animate-toast-in  { animation: toast-in  0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-toast-out { animation: toast-out 0.28s ease-in  forwards; }

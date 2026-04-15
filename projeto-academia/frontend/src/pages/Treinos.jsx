@@ -1,266 +1,642 @@
 import { useState } from 'react';
+import { Trash2, Timer, ArrowLeft, Plus, X, ClipboardList, Pencil, AlertCircle, Check } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
 
-export default function Treinos() {
-  // ==========================================
-  // 1. ESTADOS DO BANCO DE DADOS (Fichas e Exercícios)
-  // ==========================================
-  const [fichas, setFichas] = useState([
-    { id: 1, nome: 'Treino A - Peito e Tríceps', objetivo: 'Hipertrofia' },
-    { id: 2, nome: 'Treino B - Costas e Bíceps', objetivo: 'Hipertrofia' },
-  ]);
+const LBL = 'block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5';
 
-  const [exercicios, setExercicios] = useState([
-    { id: 1, fichaId: 1, nome: 'Supino Reto', series: '4', reps: '10 a 12', carga: '20kg', descanso: '60s' },
-    { id: 2, fichaId: 1, nome: 'Tríceps Pulley', series: '3', reps: '12', carga: '15kg', descanso: '45s' },
-  ]);
+function inputCls(hasError) {
+  return [
+    'w-full bg-zinc-50 dark:bg-zinc-800/80 rounded-xl px-3.5 py-2.5 text-sm',
+    'text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-500',
+    'outline-none focus:ring-2 transition-all duration-200',
+    hasError
+      ? 'border border-red-400 dark:border-red-500 focus:ring-red-400/20 focus:border-red-400'
+      : 'border border-zinc-200 dark:border-zinc-700 focus:ring-green-500/20 focus:border-green-500',
+  ].join(' ');
+}
 
-  // ==========================================
-  // 2. ESTADOS DE CONTROLE DE TELA
-  // ==========================================
-  const [fichaSelecionada, setFichaSelecionada] = useState(null); // Controla se estamos vendo as Fichas ou os Exercícios
-  
-  // Modais
-  const [modalFichaAberto, setModalFichaAberto] = useState(false);
-  const [modalExercicioAberto, setModalExercicioAberto] = useState(false);
+function FieldError({ msg }) {
+  if (!msg) return null;
+  return (
+    <p className="flex items-center gap-1 text-xs text-red-500 mt-1.5">
+      <AlertCircle size={11} strokeWidth={2.5} />
+      {msg}
+    </p>
+  );
+}
 
-  // Inputs Nova Ficha
-  const [nomeFichaInput, setNomeFichaInput] = useState('');
-  const [objetivoInput, setObjetivoInput] = useState('Hipertrofia');
+const PARTES_CORPO = [
+  { id: 'peito',       label: 'Peito' },
+  { id: 'costas',      label: 'Costas' },
+  { id: 'ombros',      label: 'Ombros' },
+  { id: 'biceps',      label: 'Bíceps' },
+  { id: 'triceps',     label: 'Tríceps' },
+  { id: 'quadriceps',  label: 'Quadríceps' },
+  { id: 'posterior',   label: 'Posterior' },
+  { id: 'gluteos',     label: 'Glúteos' },
+  { id: 'panturrilha', label: 'Panturrilha' },
+  { id: 'abdomen',     label: 'Abdômen' },
+  { id: 'antebraco',   label: 'Antebraço' },
+];
 
-  // Inputs Novo Exercício
-  const [nomeExercicioInput, setNomeExercicioInput] = useState('');
-  const [seriesInput, setSeriesInput] = useState('');
-  const [repsInput, setRepsInput] = useState('');
-  const [cargaInput, setCargaInput] = useState('');
-  const [descansoInput, setDescansoInput] = useState('');
+const CATALOGO = {
+  peito:       ['Supino Reto', 'Supino Inclinado', 'Crucifixo', 'Peck Deck', 'Crossover', 'Flexão de Braço'],
+  costas:      ['Puxada Frontal', 'Remada Baixa', 'Remada Curvada', 'Barra Fixa', 'Remada Serrote'],
+  ombros:      ['Desenvolvimento', 'Elevação Lateral', 'Elevação Frontal', 'Face Pull', 'Arnold Press'],
+  biceps:      ['Rosca Direta', 'Rosca Alternada', 'Rosca Martelo', 'Rosca Scott', 'Rosca 21'],
+  triceps:     ['Tríceps Pulley', 'Tríceps Corda', 'Tríceps Testa', 'Mergulho', 'Extensão Overhead'],
+  quadriceps:  ['Agachamento Livre', 'Leg Press', 'Cadeira Extensora', 'Hack Squat', 'Afundo'],
+  posterior:   ['Stiff', 'Cadeira Flexora', 'Mesa Flexora', 'Levantamento Terra'],
+  gluteos:     ['Hip Thrust', 'Agachamento Sumô', 'Abdução no Cabo', 'Glúteo no Cabo'],
+  panturrilha: ['Panturrilha em Pé', 'Panturrilha Sentado', 'Panturrilha no Leg Press'],
+  abdomen:     ['Abdominal Crunch', 'Prancha', 'Oblíquo', 'Elevação de Pernas', 'Abdominal Infra'],
+  antebraco:   ['Rosca de Punho', 'Flexão de Pulso Reversa', 'Farmer Walk'],
+};
 
-  // ==========================================
-  // 3. FUNÇÕES DE FICHAS
-  // ==========================================
+const OBJETIVO_COLORS = {
+  Hipertrofia:   'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20',
+  Emagrecimento: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20',
+  Resistência:   'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+};
+
+const EX_VAZIO = { nome: '', series: '', reps: '', carga: '', descanso: '' };
+
+export default function Treinos({ fichas, setFichas, exercicios, setExercicios }) {
+  const { addToast } = useToast();
+  const [fichaSelecionada, setFichaSelecionada] = useState(null);
+
+  const [modalAberta, setModalAberta]     = useState(false);
+  const [fichaEditando, setFichaEditando] = useState(null);
+  const [form, setForm]                   = useState({ nome: '', objetivo: 'Hipertrofia', partes: [] });
+  const [errosForm, setErrosForm]         = useState({});
+  const [exsLocais, setExsLocais]         = useState([]);
+  const [formEx, setFormEx]               = useState(null);
+  const [errosEx, setErrosEx]             = useState({});
+
+  function abrirModal(ficha = null) {
+    setFichaEditando(ficha);
+    setForm(ficha
+      ? { nome: ficha.nome, objetivo: ficha.objetivo, partes: ficha.partes ?? [] }
+      : { nome: '', objetivo: 'Hipertrofia', partes: [] }
+    );
+    setExsLocais(ficha
+      ? exercicios.filter(ex => ex.fichaId === ficha.id).map(ex => ({ ...ex }))
+      : []
+    );
+    setErrosForm({});
+    setFormEx(null);
+    setErrosEx({});
+    setModalAberta(true);
+  }
+
+  function fecharModal() {
+    setModalAberta(false);
+    setFichaEditando(null);
+    setForm({ nome: '', objetivo: 'Hipertrofia', partes: [] });
+    setExsLocais([]);
+    setErrosForm({});
+    setFormEx(null);
+    setErrosEx({});
+  }
+
+  function toggleParte(id) {
+    setForm(prev => ({
+      ...prev,
+      partes: prev.partes.includes(id) ? prev.partes.filter(p => p !== id) : [...prev.partes, id],
+    }));
+    setErrosForm(prev => ({ ...prev, partes: undefined }));
+  }
+
   function salvarFicha(e) {
     e.preventDefault();
-    const novaFicha = { id: Date.now(), nome: nomeFichaInput, objetivo: objetivoInput };
-    setFichas([...fichas, novaFicha]);
-    setModalFichaAberto(false);
-    setNomeFichaInput(''); setObjetivoInput('Hipertrofia');
+    const errs = {};
+    if (!form.nome.trim()) errs.nome = 'Nome da ficha é obrigatório.';
+    if (form.partes.length === 0) errs.partes = 'Selecione ao menos uma parte do corpo.';
+    if (Object.keys(errs).length) {
+      setErrosForm(errs);
+      addToast('Preencha os campos obrigatórios.', 'error');
+      return;
+    }
+
+    const dados = { nome: form.nome.trim(), objetivo: form.objetivo, partes: form.partes };
+
+    if (fichaEditando) {
+      const fichaAtualizada = { ...fichaEditando, ...dados };
+      setFichas(fichas.map(f => f.id === fichaEditando.id ? fichaAtualizada : f));
+      setExercicios([
+        ...exercicios.filter(ex => ex.fichaId !== fichaEditando.id),
+        ...exsLocais.map(ex => ({ ...ex, fichaId: fichaEditando.id })),
+      ]);
+      if (fichaSelecionada?.id === fichaEditando.id) setFichaSelecionada(fichaAtualizada);
+      addToast('Ficha atualizada com sucesso!', 'success');
+    } else {
+      const novaId = Date.now();
+      setFichas([...fichas, { id: novaId, ...dados }]);
+      setExercicios([...exercicios, ...exsLocais.map(ex => ({ ...ex, fichaId: novaId }))]);
+      addToast(`Ficha "${dados.nome}" criada com sucesso!`, 'success');
+    }
+    fecharModal();
   }
 
   function excluirFicha(id) {
-    if (confirm("Excluir esta ficha apagará todos os exercícios dela. Tem certeza?")) {
-      setFichas(fichas.filter(f => f.id !== id));
-      setExercicios(exercicios.filter(ex => ex.fichaId !== id)); // Apaga os exercícios dela também
-    }
+    if (!confirm('Excluir esta ficha apagará todos os exercícios dela. Tem certeza?')) return;
+    setFichas(fichas.filter(f => f.id !== id));
+    setExercicios(exercicios.filter(ex => ex.fichaId !== id));
+    if (fichaSelecionada?.id === id) setFichaSelecionada(null);
+    addToast('Ficha excluída.', 'warning');
   }
 
-  // ==========================================
-  // 4. FUNÇÕES DE EXERCÍCIOS
-  // ==========================================
-  function salvarExercicio(e) {
+  function salvarExLocal(e) {
     e.preventDefault();
-    const novoExercicio = {
-      id: Date.now(),
-      fichaId: fichaSelecionada.id, // Liga o exercício à ficha atual
-      nome: nomeExercicioInput,
-      series: seriesInput,
-      reps: repsInput,
-      carga: cargaInput,
-      descanso: descansoInput
-    };
-    
-    setExercicios([...exercicios, novoExercicio]);
-    setModalExercicioAberto(false);
-    
-    // Limpar campos
-    setNomeExercicioInput(''); setSeriesInput(''); setRepsInput(''); setCargaInput(''); setDescansoInput('');
+    const errs = {};
+    if (!formEx?.nome?.trim())     errs.nome     = 'Nome obrigatório.';
+    if (!formEx?.series?.trim())   errs.series   = 'Séries obrigatórias.';
+    if (!formEx?.reps?.trim())     errs.reps     = 'Repetições obrigatórias.';
+    if (!formEx?.descanso?.trim()) errs.descanso = 'Descanso obrigatório.';
+    if (Object.keys(errs).length) { setErrosEx(errs); return; }
+
+    if (formEx.id) {
+      setExsLocais(prev => prev.map(ex => ex.id === formEx.id ? { ...formEx } : ex));
+    } else {
+      setExsLocais(prev => [...prev, { ...formEx, id: Date.now() }]);
+    }
+    setFormEx(null);
+    setErrosEx({});
   }
 
-  function excluirExercicio(id) {
-    setExercicios(exercicios.filter(ex => ex.id !== id));
+  function editarExLocal(ex) {
+    setFormEx({ ...ex });
+    setErrosEx({});
   }
 
-  // Filtra apenas os exercícios da ficha que clicamos
-  const exerciciosDestaFicha = fichaSelecionada 
-    ? exercicios.filter(ex => ex.fichaId === fichaSelecionada.id) 
+  function removerExLocal(id) {
+    if (formEx?.id === id) { setFormEx(null); setErrosEx({}); }
+    setExsLocais(prev => prev.filter(ex => ex.id !== id));
+  }
+
+  function usarSugestao(nome) {
+    if (formEx !== null && !formEx.id) {
+      setFormEx(prev => ({ ...prev, nome }));
+    } else {
+      setFormEx({ ...EX_VAZIO, nome });
+    }
+    setErrosEx({});
+  }
+
+  const sugestoesUnicas = [...new Set(form.partes.flatMap(p => CATALOGO[p] ?? []))];
+  const nomesAdicionados = new Set(exsLocais.map(ex => ex.nome));
+  const exerciciosDestaFicha = fichaSelecionada
+    ? exercicios.filter(ex => ex.fichaId === fichaSelecionada.id)
     : [];
 
-  // =========================================================
-  // RENDERIZAÇÃO: TELA DE EXERCÍCIOS (Se uma ficha foi clicada)
-  // =========================================================
-  if (fichaSelecionada) {
-    return (
-      <div className="relative">
-        <header className="mb-8 border-b border-gray-800 pb-6">
-          <button 
-            onClick={() => setFichaSelecionada(null)} 
-            className="text-gray-500 hover:text-white flex items-center gap-2 mb-4 transition-colors"
-          >
-            ← Voltar para Fichas
+  const fichaModal = modalAberta && (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full max-w-2xl rounded-2xl shadow-2xl shadow-black/20 animate-scale-in flex flex-col max-h-[90vh]">
+
+        <div className="shrink-0 flex items-center justify-between px-6 pt-5 pb-4 border-b border-zinc-100 dark:border-zinc-800">
+          <div>
+            <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+              {fichaEditando ? 'Editar Ficha' : 'Nova Ficha de Treino'}
+            </h3>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              {fichaEditando ? 'Altere as informações, grupos musculares e exercícios.' : 'Configure nome, grupos musculares e monte os exercícios.'}
+            </p>
+          </div>
+          <button onClick={fecharModal} className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200">
+            <X size={16} />
           </button>
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-3xl font-bold text-green-500">{fichaSelecionada.nome}</h2>
-              <p className="text-gray-400 mt-1">Objetivo: {fichaSelecionada.objetivo}</p>
-            </div>
-            <button 
-              onClick={() => setModalExercicioAberto(true)} 
-              className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-lg shadow-lg"
-            >
-              + Adicionar Exercício
-            </button>
-          </div>
-        </header>
-
-        {/* Tabela de Exercícios */}
-        <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden shadow-md">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-800/50 text-gray-400 text-sm uppercase tracking-wider">
-                <th className="p-4">Aparelho / Exercício</th>
-                <th className="p-4 text-center">Séries</th>
-                <th className="p-4 text-center">Repetições</th>
-                <th className="p-4 text-center">Carga</th>
-                <th className="p-4 text-center">Descanso</th>
-                <th className="p-4 text-center">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800">
-              {exerciciosDestaFicha.length > 0 ? exerciciosDestaFicha.map((ex) => (
-                <tr key={ex.id} className="hover:bg-gray-800/30 transition-colors">
-                  <td className="p-4 text-white font-medium text-lg">{ex.nome}</td>
-                  <td className="p-4 text-gray-300 text-center">{ex.series}</td>
-                  <td className="p-4 text-gray-300 text-center">{ex.reps}</td>
-                  <td className="p-4 text-green-400 font-medium text-center">{ex.carga || '-'}</td>
-                  <td className="p-4 text-gray-400 text-center text-sm">⏱ {ex.descanso}</td>
-                  <td className="p-4 text-center">
-                    <button onClick={() => excluirExercicio(ex.id)} className="text-gray-500 hover:text-red-500 transition-colors p-2">🗑️</button>
-                  </td>
-                </tr>
-              )) : (
-                <tr><td colSpan="6" className="p-10 text-center text-gray-500 italic">Nenhum exercício cadastrado nesta ficha.</td></tr>
-              )}
-            </tbody>
-          </table>
         </div>
 
-        {/* Modal de Novo Exercício */}
-        {modalExercicioAberto && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-900 border border-gray-800 w-full max-w-lg rounded-2xl p-6 shadow-2xl">
-              <h3 className="text-xl font-bold text-white mb-6">Adicionar Exercício</h3>
-              <form onSubmit={salvarExercicio} className="space-y-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Nome do Aparelho/Exercício</label>
-                  <input required type="text" value={nomeExercicioInput} onChange={(e) => setNomeExercicioInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-green-500" placeholder="Ex: Cadeira Extensora" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-1">Séries</label>
-                    <input required type="text" value={seriesInput} onChange={(e) => setSeriesInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-green-500" placeholder="Ex: 4" />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-1">Repetições</label>
-                    <input required type="text" value={repsInput} onChange={(e) => setRepsInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-green-500" placeholder="Ex: 10 a 12" />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-1">Carga (Opcional)</label>
-                    <input type="text" value={cargaInput} onChange={(e) => setCargaInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-green-500" placeholder="Ex: 25kg" />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-1">Descanso</label>
-                    <input required type="text" value={descansoInput} onChange={(e) => setDescansoInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-green-500" placeholder="Ex: 60s" />
-                  </div>
-                </div>
-                <div className="flex gap-3 pt-4 border-t border-gray-800">
-                  <button type="button" onClick={() => setModalExercicioAberto(false)} className="flex-1 text-gray-400 hover:text-white py-3">Cancelar</button>
-                  <button type="submit" className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg">Salvar Exercício</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
+        <form onSubmit={salvarFicha} noValidate className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
 
-  // =========================================================
-  // RENDERIZAÇÃO: TELA DE FICHAS (Padrão)
-  // =========================================================
-  return (
-    <div className="relative">
-      <header className="flex justify-between items-center mb-10">
-        <div>
-          <h2 className="text-3xl font-bold text-white">Fichas de Treino</h2>
-          <p className="text-gray-400 mt-1">Crie e gerencie os programas de treinamento.</p>
-        </div>
-        <button onClick={() => setModalFichaAberto(true)} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-lg shadow-lg transition-all transform hover:scale-105">
-          + Nova Ficha
-        </button>
-      </header>
-
-      {/* GRADE DE FICHAS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {fichas.map((ficha) => {
-          // Conta quantos exercícios tem dentro desta ficha para exibir no card
-          const qtdExercicios = exercicios.filter(ex => ex.fichaId === ficha.id).length;
-
-          return (
-            <div key={ficha.id} className="bg-gray-900 border border-gray-800 rounded-xl p-6 hover:border-green-500/50 transition-colors flex flex-col">
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-xl font-bold text-white">{ficha.nome}</h3>
-                <button onClick={() => excluirFicha(ficha.id)} className="text-gray-500 hover:text-red-500 p-1 transition-colors" title="Excluir Ficha">🗑️</button>
-              </div>
-              
-              <div className="mb-6 flex flex-col gap-2">
-                <span className="w-fit bg-gray-800 text-gray-300 text-xs px-3 py-1 rounded-full border border-gray-700">Objetivo: {ficha.objetivo}</span>
-                <span className="text-sm text-gray-500">{qtdExercicios} exercícios cadastrados</span>
-              </div>
-
-              {/* AGORA ESSE BOTÃO TEM VIDA! */}
-              <div className="mt-auto pt-4 border-t border-gray-800">
-                <button 
-                  onClick={() => setFichaSelecionada(ficha)} 
-                  className="w-full bg-gray-800 hover:bg-green-600 hover:text-white text-green-500 font-semibold py-2 rounded-lg transition-colors"
-                >
-                  Ver Exercícios
-                </button>
-              </div>
-            </div>
-          )
-        })}
-
-        {fichas.length === 0 && (
-          <div className="col-span-full text-center py-10 text-gray-500 italic bg-gray-900/50 rounded-xl border border-dashed border-gray-800">
-            Nenhuma ficha cadastrada ainda. Clique em "+ Nova Ficha" para começar.
-          </div>
-        )}
-      </div>
-
-      {/* Modal de Nova Ficha */}
-      {modalFichaAberto && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 w-full max-w-md rounded-2xl p-6 shadow-2xl">
-            <h3 className="text-xl font-bold text-white mb-6">Criar Nova Ficha</h3>
-            <form onSubmit={salvarFicha} className="space-y-5">
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Nome da Ficha</label>
-                <input required type="text" value={nomeFichaInput} onChange={(e) => setNomeFichaInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-green-500" placeholder="Ex: Treino A - Peito" />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2 sm:col-span-1">
+                <label className={LBL}>Nome da Ficha</label>
+                <input
+                  type="text" maxLength={60} value={form.nome}
+                  onChange={e => { setForm(p => ({ ...p, nome: e.target.value })); setErrosForm(p => ({ ...p, nome: undefined })); }}
+                  className={inputCls(!!errosForm.nome)} placeholder="Ex: Treino A — Peito"
+                  autoFocus
+                />
+                <FieldError msg={errosForm.nome} />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Objetivo Principal</label>
-                <select value={objetivoInput} onChange={(e) => setObjetivoInput(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-green-500">
+                <label className={LBL}>Objetivo Principal</label>
+                <select value={form.objetivo} onChange={e => setForm(p => ({ ...p, objetivo: e.target.value }))} className={inputCls(false)}>
                   <option value="Hipertrofia">Hipertrofia</option>
                   <option value="Emagrecimento">Emagrecimento</option>
                   <option value="Resistência">Resistência</option>
                 </select>
               </div>
-              <div className="flex gap-3 pt-4 border-t border-gray-800">
-                <button type="button" onClick={() => setModalFichaAberto(false)} className="flex-1 text-gray-400 hover:text-white py-3">Cancelar</button>
-                <button type="submit" className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg">Criar Ficha</button>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <label className={LBL + ' mb-0'}>Grupos Musculares</label>
+                {form.partes.length > 0 && (
+                  <span className="text-xs font-semibold text-green-600 dark:text-green-400">
+                    {form.partes.length} selecionado{form.partes.length !== 1 ? 's' : ''}
+                  </span>
+                )}
               </div>
-            </form>
+              <div className="flex flex-wrap gap-2">
+                {PARTES_CORPO.map(parte => {
+                  const sel = form.partes.includes(parte.id);
+                  return (
+                    <button
+                      key={parte.id}
+                      type="button"
+                      onClick={() => toggleParte(parte.id)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all duration-200 ${
+                        sel
+                          ? 'bg-green-500 text-white border-green-500 shadow-sm shadow-green-500/25 scale-105'
+                          : 'bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-green-400 dark:hover:border-green-500 hover:text-green-600 dark:hover:text-green-400'
+                      }`}
+                    >
+                      {sel && <Check size={10} strokeWidth={3} />}
+                      {parte.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <FieldError msg={errosForm.partes} />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <label className={LBL + ' mb-0'}>
+                  Exercícios
+                  {exsLocais.length > 0 && (
+                    <span className="ml-2 font-normal text-zinc-400 normal-case tracking-normal">{exsLocais.length} adicionado{exsLocais.length !== 1 ? 's' : ''}</span>
+                  )}
+                </label>
+              </div>
+
+              {exsLocais.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {exsLocais.map((ex, i) => (
+                    <div
+                      key={ex.id}
+                      className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 ${
+                        formEx?.id === ex.id
+                          ? 'border-blue-400 dark:border-blue-500 bg-blue-500/5'
+                          : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/60'
+                      }`}
+                    >
+                      <div className="w-6 h-6 shrink-0 flex items-center justify-center rounded-lg bg-zinc-200 dark:bg-zinc-700 text-xs font-bold text-zinc-500 dark:text-zinc-400">
+                        {i + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-zinc-900 dark:text-white truncate">{ex.nome}</p>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                            <span className="text-green-600 dark:text-green-400 font-bold">{ex.series}</span> séries × {ex.reps}
+                          </span>
+                          {ex.carga && <span className="text-xs font-semibold text-orange-500">{ex.carga}</span>}
+                          <span className="flex items-center gap-0.5 text-xs text-zinc-400">
+                            <Timer size={10} />{ex.descanso}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => editarExLocal(ex)}
+                          className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all duration-200"
+                          title="Editar"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removerExLocal(ex.id)}
+                          className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all duration-200"
+                          title="Remover"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {sugestoesUnicas.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500 mb-2">
+                    Sugestões para os grupos selecionados — clique para pré-preencher:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {sugestoesUnicas.map(s => {
+                      const adicionado = nomesAdicionados.has(s);
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => !adicionado && usarSugestao(s)}
+                          disabled={adicionado}
+                          className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border transition-all duration-200 ${
+                            adicionado
+                              ? 'opacity-40 cursor-default bg-zinc-100 dark:bg-zinc-800 text-zinc-400 border-zinc-200 dark:border-zinc-700 line-through'
+                              : 'bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:bg-green-500 hover:text-white hover:border-green-500 cursor-pointer'
+                          }`}
+                        >
+                          {adicionado ? <Check size={9} strokeWidth={3} /> : <Plus size={9} />}
+                          {s}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {formEx !== null ? (
+                <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl p-4 bg-white dark:bg-zinc-900 space-y-3 animate-fade-up">
+                  <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                    {formEx.id ? 'Editando exercício' : 'Novo exercício'}
+                  </p>
+                  <div>
+                    <label className={LBL}>Nome do Exercício</label>
+                    <input
+                      type="text" maxLength={60} value={formEx.nome}
+                      onChange={e => { setFormEx(p => ({ ...p, nome: e.target.value })); setErrosEx(p => ({ ...p, nome: undefined })); }}
+                      className={inputCls(!!errosEx.nome)} placeholder="Ex: Supino Reto"
+                      autoFocus
+                    />
+                    <FieldError msg={errosEx.nome} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={LBL}>Séries</label>
+                      <input
+                        type="text" maxLength={5} value={formEx.series}
+                        onChange={e => { setFormEx(p => ({ ...p, series: e.target.value })); setErrosEx(p => ({ ...p, series: undefined })); }}
+                        className={inputCls(!!errosEx.series)} placeholder="Ex: 4"
+                      />
+                      <FieldError msg={errosEx.series} />
+                    </div>
+                    <div>
+                      <label className={LBL}>Repetições</label>
+                      <input
+                        type="text" maxLength={20} value={formEx.reps}
+                        onChange={e => { setFormEx(p => ({ ...p, reps: e.target.value })); setErrosEx(p => ({ ...p, reps: undefined })); }}
+                        className={inputCls(!!errosEx.reps)} placeholder="Ex: 10 a 12"
+                      />
+                      <FieldError msg={errosEx.reps} />
+                    </div>
+                    <div>
+                      <label className={LBL}>Carga (opcional)</label>
+                      <input
+                        type="text" maxLength={10} value={formEx.carga}
+                        onChange={e => setFormEx(p => ({ ...p, carga: e.target.value }))}
+                        className={inputCls(false)} placeholder="Ex: 25kg"
+                      />
+                    </div>
+                    <div>
+                      <label className={LBL}>Descanso</label>
+                      <input
+                        type="text" maxLength={10} value={formEx.descanso}
+                        onChange={e => { setFormEx(p => ({ ...p, descanso: e.target.value })); setErrosEx(p => ({ ...p, descanso: undefined })); }}
+                        className={inputCls(!!errosEx.descanso)} placeholder="Ex: 60s"
+                      />
+                      <FieldError msg={errosEx.descanso} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => { setFormEx(null); setErrosEx({}); }}
+                      className="flex-1 py-2 rounded-xl text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-all duration-200"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={salvarExLocal}
+                      className="flex-1 py-2 rounded-xl text-xs font-semibold bg-green-500 hover:bg-green-400 text-white shadow-sm shadow-green-500/25 transition-all duration-200"
+                    >
+                      {formEx.id ? 'Salvar Alterações' : 'Adicionar à Ficha'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { setFormEx({ ...EX_VAZIO }); setErrosEx({}); }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-zinc-500 dark:text-zinc-400 border border-dashed border-zinc-300 dark:border-zinc-700 hover:border-green-400 dark:hover:border-green-500 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-500/5 transition-all duration-200"
+                >
+                  <Plus size={14} />
+                  Adicionar Exercício Manualmente
+                </button>
+              )}
+            </div>
+
           </div>
+
+          <div className="shrink-0 flex gap-3 px-6 py-4 border-t border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+            <button
+              type="button"
+              onClick={fecharModal}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-all duration-200"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="flex-1 bg-green-500 hover:bg-green-400 text-white font-semibold py-2.5 rounded-xl shadow-md shadow-green-500/25 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+            >
+              {fichaEditando ? 'Salvar Alterações' : 'Criar Ficha'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+
+  if (fichaSelecionada) {
+    const partes = fichaSelecionada.partes ?? [];
+    return (
+      <div className="animate-fade-up">
+        <button
+          onClick={() => setFichaSelecionada(null)}
+          className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white mb-6 transition-colors duration-200 group"
+        >
+          <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform duration-200" />
+          Voltar para Fichas
+        </button>
+
+        <header className="flex items-start justify-between mb-6 pb-5 border-b border-zinc-200 dark:border-zinc-800">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${OBJETIVO_COLORS[fichaSelecionada.objetivo] ?? OBJETIVO_COLORS.Hipertrofia}`}>
+                {fichaSelecionada.objetivo}
+              </span>
+            </div>
+            <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight mb-2">{fichaSelecionada.nome}</h2>
+            {partes.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {partes.map(pId => {
+                  const parte = PARTES_CORPO.find(p => p.id === pId);
+                  return parte ? (
+                    <span key={pId} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
+                      {parte.label}
+                    </span>
+                  ) : null;
+                })}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => abrirModal(fichaSelecionada)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-all duration-200"
+          >
+            <Pencil size={14} />
+            Editar Ficha
+          </button>
+        </header>
+
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/40">
+                {['Exercício', 'Séries', 'Repetições', 'Carga', 'Descanso'].map(h => (
+                  <th key={h} className={`px-5 py-3.5 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider ${h !== 'Exercício' ? 'text-center' : ''}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {exerciciosDestaFicha.length > 0 ? exerciciosDestaFicha.map(ex => (
+                <tr key={ex.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors duration-150">
+                  <td className="px-5 py-4 font-semibold text-zinc-900 dark:text-white">{ex.nome}</td>
+                  <td className="px-5 py-4 text-center">
+                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 font-bold text-sm">{ex.series}</span>
+                  </td>
+                  <td className="px-5 py-4 text-center text-zinc-600 dark:text-zinc-300 font-medium">{ex.reps}</td>
+                  <td className="px-5 py-4 text-center">
+                    <span className="text-orange-500 font-semibold">{ex.carga || '—'}</span>
+                  </td>
+                  <td className="px-5 py-4 text-center">
+                    <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400 text-xs">
+                      <Timer size={13} />{ex.descanso}
+                    </span>
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan="5" className="px-5 py-14 text-center">
+                    <p className="text-sm text-zinc-400 italic">Nenhum exercício cadastrado nesta ficha.</p>
+                    <button
+                      onClick={() => abrirModal(fichaSelecionada)}
+                      className="mt-3 text-xs font-semibold text-green-600 dark:text-green-400 hover:underline"
+                    >
+                      Clique em Editar Ficha para adicionar exercícios
+                    </button>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {fichaModal}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <header className="flex items-start justify-between mb-7">
+        <div>
+          <p className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-1">Programas</p>
+          <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">Fichas de Treino</h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+            {fichas.length} ficha{fichas.length !== 1 ? 's' : ''} cadastrada{fichas.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <button
+          onClick={() => abrirModal()}
+          className="flex items-center gap-2 bg-green-500 hover:bg-green-400 text-white font-semibold px-4 py-2.5 rounded-xl text-sm shadow-md shadow-green-500/25 hover:shadow-green-500/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+        >
+          <Plus size={15} />
+          Nova Ficha
+        </button>
+      </header>
+
+      {fichas.length === 0 ? (
+        <div className="bg-white dark:bg-zinc-900 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-2xl py-16 text-center">
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-zinc-100 dark:bg-zinc-800 rounded-2xl mb-4">
+            <ClipboardList size={24} className="text-zinc-400" />
+          </div>
+          <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Nenhuma ficha cadastrada ainda.</p>
+          <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">Clique em "Nova Ficha" para começar.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {fichas.map(ficha => {
+            const qtd    = exercicios.filter(ex => ex.fichaId === ficha.id).length;
+            const partes = ficha.partes ?? [];
+            return (
+              <div key={ficha.id} className="group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 hover:border-green-500/40 hover:shadow-md hover:shadow-zinc-200/60 dark:hover:shadow-black/30 hover:-translate-y-0.5 transition-all duration-300 flex flex-col">
+                <div className="flex items-start justify-between mb-3">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${OBJETIVO_COLORS[ficha.objetivo] ?? OBJETIVO_COLORS.Hipertrofia}`}>
+                    {ficha.objetivo}
+                  </span>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <button
+                      onClick={() => abrirModal(ficha)}
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all duration-200"
+                      title="Editar Ficha"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      onClick={() => excluirFicha(ficha.id)}
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all duration-200"
+                      title="Excluir Ficha"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-white mb-2 leading-snug">{ficha.nome}</h3>
+
+                {partes.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {partes.slice(0, 4).map(pId => {
+                      const parte = PARTES_CORPO.find(p => p.id === pId);
+                      return parte ? (
+                        <span key={pId} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
+                          {parte.label}
+                        </span>
+                      ) : null;
+                    })}
+                    {partes.length > 4 && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-400 border border-zinc-200 dark:border-zinc-700">
+                        +{partes.length - 4}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-xs text-zinc-400 mb-5">
+                  {qtd} exercício{qtd !== 1 ? 's' : ''} cadastrado{qtd !== 1 ? 's' : ''}
+                </p>
+
+                <button
+                  onClick={() => setFichaSelecionada(ficha)}
+                  className="mt-auto w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-semibold text-green-600 dark:text-green-400 bg-green-500/8 dark:bg-green-500/10 hover:bg-green-500 hover:text-white border border-green-500/20 hover:border-green-500 transition-all duration-200"
+                >
+                  Ver Exercícios
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
+
+      {fichaModal}
     </div>
   );
 }
