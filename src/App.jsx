@@ -15,8 +15,8 @@ export default function App() {
   const [telaAtiva, setTelaAtiva] = useState('painel');
 
   const [alunos, setAlunos] = useState([
-    { id: 1, nome: 'João Silva', telefone: '(11) 98765-4321', cpf: '111.222.333-44', nascimento: '1995-05-12', altura: '1.75', peso: '80', plano: 'Anual', vencimento: '2026-04-15', status: 'Ativo' },
-    { id: 2, nome: 'Maria Oliveira', telefone: '(21) 99999-8888', cpf: '222.333.444-55', nascimento: '1998-10-25', altura: '1.65', peso: '62', plano: 'Mensal', vencimento: '2026-04-10', status: 'Pendente' },
+    { id: 1, nome: 'João Silva', telefone: '(11) 98765-4321', cpf: '111.222.333-44', nascimento: '1995-05-12', altura: '1.75', peso: '80', plano: 'Anual', vencimento: '2026-04-15', status: 'Ativo', fichaId: '1', treinosSemana: { segunda: '1', terca: '2', quarta: '', quinta: '1', sexta: '2' } },
+    { id: 2, nome: 'Maria Oliveira', telefone: '(21) 99999-8888', cpf: '222.333.444-55', nascimento: '1998-10-25', altura: '1.65', peso: '62', plano: 'Mensal', vencimento: '2026-04-10', status: 'Pendente', fichaId: '', treinosSemana: { segunda: '', terca: '', quarta: '', quinta: '', sexta: '' } },
   ]);
 
   const [mensalidades, setMensalidades] = useState([
