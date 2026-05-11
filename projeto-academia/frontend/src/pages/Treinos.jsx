@@ -5,6 +5,7 @@ import {
   ArrowRight, Dumbbell, ChevronLeft,
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { fichasApi } from '../api';
 
 const LBL = 'block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5';
 
@@ -65,7 +66,7 @@ const OBJETIVO_COLORS = {
 
 const EX_DEFAULTS = { series: '3', reps: '10 a 12', carga: '', descanso: '60s' };
 
-export default function Treinos({ fichas, setFichas, exercicios, setExercicios }) {
+export default function Treinos({ fichas, setFichas }) {
   const { addToast } = useToast();
   const [fichaSelecionada, setFichaSelecionada] = useState(null);
 
@@ -118,7 +119,7 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
       : { nome: '', objetivo: 'Hipertrofia', partes: [] }
     );
     setExsLocais(ficha
-      ? exercicios.filter(ex => ex.fichaId === ficha.id).map(ex => ({ ...ex }))
+      ? (ficha.exercicios ?? []).map(ex => ({ ...ex }))
       : []
     );
     setErrosForm({});
@@ -161,33 +162,41 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
   }
 
   /* ────────────────────────────── salvar ficha ── */
-  function salvarFicha() {
-    const dados = { nome: form.nome.trim(), objetivo: form.objetivo, partes: form.partes };
+  async function salvarFicha() {
+    const payload = {
+      nome:       form.nome.trim(),
+      objetivo:   form.objetivo,
+      partes:     form.partes,
+      exercicios: exsLocais,
+    };
 
-    if (fichaEditando) {
-      const fichaAtualizada = { ...fichaEditando, ...dados };
-      setFichas(fichas.map(f => f.id === fichaEditando.id ? fichaAtualizada : f));
-      setExercicios([
-        ...exercicios.filter(ex => ex.fichaId !== fichaEditando.id),
-        ...exsLocais.map(ex => ({ ...ex, fichaId: fichaEditando.id })),
-      ]);
-      if (fichaSelecionada?.id === fichaEditando.id) setFichaSelecionada(fichaAtualizada);
-      addToast('Ficha atualizada com sucesso!', 'success');
-    } else {
-      const novaId = Date.now();
-      setFichas([...fichas, { id: novaId, ...dados }]);
-      setExercicios([...exercicios, ...exsLocais.map(ex => ({ ...ex, fichaId: novaId }))]);
-      addToast(`Ficha "${dados.nome}" criada com sucesso!`, 'success');
+    try {
+      if (fichaEditando) {
+        const fichaAtualizada = await fichasApi.atualizar(fichaEditando.id, payload);
+        setFichas(fichas.map(f => f.id === fichaEditando.id ? fichaAtualizada : f));
+        if (fichaSelecionada?.id === fichaEditando.id) setFichaSelecionada(fichaAtualizada);
+        addToast('Ficha atualizada com sucesso!', 'success');
+      } else {
+        const novaFicha = await fichasApi.criar(payload);
+        setFichas(prev => [...prev, novaFicha]);
+        addToast(`Ficha "${novaFicha.nome}" criada com sucesso!`, 'success');
+      }
+      fecharModal();
+    } catch (err) {
+      addToast(err.message || 'Erro ao salvar ficha.', 'error');
     }
-    fecharModal();
   }
 
-  function excluirFicha(id) {
+  async function excluirFicha(id) {
     if (!confirm('Excluir esta ficha apagará todos os exercícios dela. Tem certeza?')) return;
-    setFichas(fichas.filter(f => f.id !== id));
-    setExercicios(exercicios.filter(ex => ex.fichaId !== id));
-    if (fichaSelecionada?.id === id) setFichaSelecionada(null);
-    addToast('Ficha excluída.', 'warning');
+    try {
+      await fichasApi.excluir(id);
+      setFichas(fichas.filter(f => f.id !== id));
+      if (fichaSelecionada?.id === id) setFichaSelecionada(null);
+      addToast('Ficha excluída.', 'warning');
+    } catch (err) {
+      addToast(err.message || 'Erro ao excluir ficha.', 'error');
+    }
   }
 
   /* ────────────────────────────── exercícios ── */
@@ -289,9 +298,7 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
     return lista;
   }, [filtroTab, buscaEx, form.partes]);
 
-  const exerciciosDestaFicha = fichaSelecionada
-    ? exercicios.filter(ex => ex.fichaId === fichaSelecionada.id)
-    : [];
+  const exerciciosDestaFicha = fichaSelecionada?.exercicios ?? [];
 
   /* ════════════════════════════════════════════════════
      MODAL
@@ -926,7 +933,7 @@ export default function Treinos({ fichas, setFichas, exercicios, setExercicios }
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {fichas.map(ficha => {
-            const qtd    = exercicios.filter(ex => ex.fichaId === ficha.id).length;
+            const qtd    = (ficha.exercicios ?? []).length;
             const partes = ficha.partes ?? [];
             return (
               <div

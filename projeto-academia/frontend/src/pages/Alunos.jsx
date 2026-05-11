@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle } from 'lucide-react';
+import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, Eye, Dumbbell } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { alunosApi } from '../api';
+import AlunoDetalhe from './AlunoDetalhe';
 
 function mascaraCPF(v) {
   return v.replace(/\D/g, '')
@@ -63,6 +65,7 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
   const { addToast } = useToast();
   const [exibindoForm, setExibindoForm] = useState(false);
   const [alunoEditando, setAlunoEditando] = useState(null);
+  const [alunoVisualizandoId, setAlunoVisualizandoId] = useState(null);
   const [busca, setBusca] = useState('');
   const [erros, setErros] = useState({});
 
@@ -121,37 +124,79 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
     return Object.keys(e).length === 0;
   }
 
-  function salvarAluno(e) {
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvarAluno(e) {
     e.preventDefault();
     if (!validar()) {
       addToast('Corrija os campos destacados antes de continuar.', 'error');
       return;
     }
-    if (alunoEditando) {
-      setAlunos(alunos.map(a => a.id === alunoEditando.id ? { ...a, ...form } : a));
-      addToast('Aluno atualizado com sucesso!', 'success');
-    } else {
-      setAlunos([...alunos, { id: Date.now(), ...form, status: 'Ativo' }]);
-      addToast('Aluno cadastrado com sucesso!', 'success');
+    setSalvando(true);
+    try {
+      if (alunoEditando) {
+        const atualizado = await alunosApi.atualizar(alunoEditando.id, {
+          ...form,
+          treinosSemana: alunoEditando.treinosSemana || { segunda: '', terca: '', quarta: '', quinta: '', sexta: '' },
+        });
+        setAlunos(prev => prev.map(a => a.id === alunoEditando.id ? atualizado : a));
+        addToast('Aluno atualizado com sucesso!', 'success');
+      } else {
+        const novo = await alunosApi.criar({
+          ...form,
+          status: 'Ativo',
+          treinosSemana: { segunda: '', terca: '', quarta: '', quinta: '', sexta: '' },
+        });
+        setAlunos(prev => [...prev, novo]);
+        addToast('Aluno cadastrado com sucesso!', 'success');
+      }
+      fecharForm();
+    } catch (err) {
+      addToast(err.message || 'Erro ao salvar aluno.', 'error');
+    } finally {
+      setSalvando(false);
     }
-    fecharForm();
   }
 
-  function excluirAluno(id) {
-    if (confirm('Tem certeza que deseja excluir este aluno?')) {
-      setAlunos(alunos.filter(a => a.id !== id));
+  async function excluirAluno(id) {
+    if (!confirm('Tem certeza que deseja excluir este aluno?')) return;
+    try {
+      await alunosApi.excluir(id);
+      setAlunos(prev => prev.filter(a => a.id !== id));
       addToast('Aluno excluído.', 'warning');
+    } catch (err) {
+      addToast(err.message || 'Erro ao excluir aluno.', 'error');
     }
   }
 
-  function atualizarFichaAluno(id, novaFichaId) {
-    setAlunos(alunos.map(a => a.id === id ? { ...a, fichaId: novaFichaId } : a));
-    addToast('Ficha de treino atualizada.', 'info');
+  async function atualizarTreinosSemana(alunoId, novosTreinos) {
+    const aluno = alunos.find(a => a.id === alunoId);
+    if (!aluno) return;
+    setAlunos(prev => prev.map(a => a.id === alunoId ? { ...a, treinosSemana: novosTreinos } : a));
+    try {
+      await alunosApi.atualizar(alunoId, { ...aluno, treinosSemana: novosTreinos });
+    } catch {
+      // falha silenciosa — UI já atualizou optimisticamente
+    }
   }
 
   const alunosFiltrados = alunos.filter(a =>
     a.nome.toLowerCase().includes(busca.toLowerCase())
   );
+
+  if (alunoVisualizandoId) {
+    const alunoAtual = alunos.find(a => a.id === alunoVisualizandoId);
+    if (alunoAtual) {
+      return (
+        <AlunoDetalhe
+          aluno={alunoAtual}
+          fichas={fichas}
+          onVoltar={() => setAlunoVisualizandoId(null)}
+          onAtualizar={atualizarTreinosSemana}
+        />
+      );
+    }
+  }
 
   if (exibindoForm) {
     return (
@@ -276,10 +321,10 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
               Cancelar
             </button>
             <button
-              type="submit"
-              className="flex-1 bg-green-500 hover:bg-green-400 active:bg-green-600 text-white font-semibold py-2.5 rounded-xl shadow-md shadow-green-500/25 hover:shadow-green-500/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+              type="submit" disabled={salvando}
+              className="flex-1 bg-green-500 hover:bg-green-400 active:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-xl shadow-md shadow-green-500/25 hover:shadow-green-500/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
             >
-              {alunoEditando ? 'Salvar Alterações' : 'Salvar Matrícula'}
+              {salvando ? 'Salvando…' : alunoEditando ? 'Salvar Alterações' : 'Salvar Matrícula'}
             </button>
           </div>
         </form>
@@ -340,20 +385,30 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
                   <p className="text-xs text-zinc-400 mt-0.5">Vence: {aluno.vencimento}</p>
                 </td>
                 <td className="px-5 py-4">
-                  <select
-                    value={aluno.fichaId || ''}
-                    onChange={e => atualizarFichaAluno(aluno.id, e.target.value)}
-                    className="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-800 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 transition-all duration-200 max-w-[140px]"
-                  >
-                    <option value="">Sem ficha</option>
-                    {fichas.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
-                  </select>
+                  {(() => {
+                    const ts = aluno.treinosSemana;
+                    const dias = ts ? Object.values(ts).filter(Boolean).length : 0;
+                    if (dias === 0) return <span className="text-xs text-zinc-400 italic">Sem agenda</span>;
+                    return (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20">
+                        <Dumbbell size={10} />
+                        {dias} dia{dias !== 1 ? 's' : ''}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="px-5 py-4 text-center">
                   <StatusBadge status={aluno.status} />
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center justify-center gap-1">
+                    <button
+                      onClick={() => setAlunoVisualizandoId(aluno.id)}
+                      className="p-2 rounded-lg text-zinc-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-500/10 transition-all duration-200"
+                      title="Ver Treinos"
+                    >
+                      <Eye size={14} />
+                    </button>
                     <button
                       onClick={() => abrirEdicao(aluno)}
                       className="p-2 rounded-lg text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all duration-200"
