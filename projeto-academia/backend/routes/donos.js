@@ -11,6 +11,7 @@ function mapDono(row) {
     telefone:     row.telefone      || '',
     cpf:          row.cpf           || '',
     nomeAcademia: row.nome_academia || '',
+    chavePix:     row.chave_pix     || '',
   };
 }
 
@@ -56,7 +57,7 @@ router.post('/', async (req, res) => {
 // PUT — atualizar dono
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const { nome, email, senha, telefone, cpf, nomeAcademia } = req.body;
+  const { nome, email, senha, telefone, cpf, nomeAcademia, chavePix } = req.body;
   if (!nome?.trim())  return res.status(400).json({ erro: 'Nome é obrigatório.' });
   if (!email?.trim()) return res.status(400).json({ erro: 'E-mail é obrigatório.' });
 
@@ -65,11 +66,11 @@ router.put('/:id', async (req, res) => {
 
     if (senha && senha.length >= 6) {
       const senhaHash = await bcrypt.hash(senha, 10);
-      query = `UPDATE donos SET nome=$1, email=$2, senha_hash=$3, telefone=$4, cpf=$5, nome_academia=$6 WHERE id=$7 RETURNING *`;
-      params = [nome.trim(), email.trim(), senhaHash, telefone || null, cpf || null, nomeAcademia || null, id];
+      query = `UPDATE donos SET nome=$1, email=$2, senha_hash=$3, telefone=$4, cpf=$5, nome_academia=$6, chave_pix=$7 WHERE id=$8 RETURNING *`;
+      params = [nome.trim(), email.trim(), senhaHash, telefone || null, cpf || null, nomeAcademia || null, chavePix || null, id];
     } else {
-      query = `UPDATE donos SET nome=$1, email=$2, telefone=$3, cpf=$4, nome_academia=$5 WHERE id=$6 RETURNING *`;
-      params = [nome.trim(), email.trim(), telefone || null, cpf || null, nomeAcademia || null, id];
+      query = `UPDATE donos SET nome=$1, email=$2, telefone=$3, cpf=$4, nome_academia=$5, chave_pix=$6 WHERE id=$7 RETURNING *`;
+      params = [nome.trim(), email.trim(), telefone || null, cpf || null, nomeAcademia || null, chavePix || null, id];
     }
 
     const { rows } = await pool.query(query, params);

@@ -46,6 +46,15 @@ async function iniciar() {
     } else {
       console.log('✓ Tabelas já existem — dados preservados');
     }
+
+    // Migrações incrementais (seguras — IF NOT EXISTS)
+    await pool.query(`ALTER TABLE donos        ADD COLUMN IF NOT EXISTS chave_pix    VARCHAR(100)`);
+    await pool.query(`ALTER TABLE professores  ADD COLUMN IF NOT EXISTS senha_hash   VARCHAR(255)`);
+    await pool.query(`ALTER TABLE alunos       ADD COLUMN IF NOT EXISTS senha_hash   VARCHAR(255)`);
+    await pool.query(`ALTER TABLE alunos       ADD COLUMN IF NOT EXISTS ficha_ids    JSONB DEFAULT '[]'`);
+    // Popula ficha_ids a partir de ficha_id para registros antigos
+    await pool.query(`UPDATE alunos SET ficha_ids = jsonb_build_array(ficha_id) WHERE ficha_id IS NOT NULL AND ficha_ids = '[]'::jsonb`);
+    console.log('✓ Migrações aplicadas');
   } catch (err) {
     console.error('✗ Erro ao conectar ao banco de dados:', err.message);
     console.error('  Verifique as variáveis no arquivo .env e tente novamente.');

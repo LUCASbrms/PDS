@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Trash2, Timer, ArrowLeft, Plus, X, ClipboardList, Pencil,
   AlertCircle, Check, Search, ChevronUp, ChevronDown,
@@ -66,9 +66,16 @@ const OBJETIVO_COLORS = {
 
 const EX_DEFAULTS = { series: '3', reps: '10 a 12', carga: '', descanso: '60s' };
 
-export default function Treinos({ fichas, setFichas }) {
+export default function Treinos({ fichas, setFichas, somenteLeitura = false }) {
   const { addToast } = useToast();
   const [fichaSelecionada, setFichaSelecionada] = useState(null);
+
+  // Aluno: abre automaticamente se tiver apenas uma ficha vinculada
+  useEffect(() => {
+    if (somenteLeitura && fichas.length === 1 && !fichaSelecionada) {
+      setFichaSelecionada(fichas[0]);
+    }
+  }, [somenteLeitura, fichas]);
 
   /* ── Modal base ── */
   const [modalAberta, setModalAberta]     = useState(false);
@@ -836,17 +843,20 @@ export default function Treinos({ fichas, setFichas }) {
               </div>
             )}
           </div>
-          <button
-            onClick={() => abrirModal(fichaSelecionada)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-all duration-200"
-          >
-            <Pencil size={14} />
-            Editar Ficha
-          </button>
+          {!somenteLeitura && (
+            <button
+              onClick={() => abrirModal(fichaSelecionada)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-all duration-200"
+            >
+              <Pencil size={14} />
+              Editar Ficha
+            </button>
+          )}
         </header>
 
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
-          <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm min-w-[500px]">
             <thead>
               <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/40">
                 {['Exercício', 'Séries', 'Repetições', 'Carga', 'Descanso'].map(h => (
@@ -893,6 +903,7 @@ export default function Treinos({ fichas, setFichas }) {
               )}
             </tbody>
           </table>
+          </div>
         </div>
 
         {fichaModal}
@@ -913,13 +924,15 @@ export default function Treinos({ fichas, setFichas }) {
             {fichas.length} ficha{fichas.length !== 1 ? 's' : ''} cadastrada{fichas.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <button
-          onClick={() => abrirModal()}
-          className="flex items-center gap-2 bg-green-500 hover:bg-green-400 text-white font-semibold px-4 py-2.5 rounded-xl text-sm shadow-md shadow-green-500/25 hover:shadow-green-500/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
-        >
-          <Plus size={15} />
-          Nova Ficha
-        </button>
+        {!somenteLeitura && (
+          <button
+            onClick={() => abrirModal()}
+            className="flex items-center gap-2 bg-green-500 hover:bg-green-400 text-white font-semibold px-4 py-2.5 rounded-xl text-sm shadow-md shadow-green-500/25 hover:shadow-green-500/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+          >
+            <Plus size={15} />
+            Nova Ficha
+          </button>
+        )}
       </header>
 
       {fichas.length === 0 ? (
@@ -944,22 +957,24 @@ export default function Treinos({ fichas, setFichas }) {
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${OBJETIVO_COLORS[ficha.objetivo] ?? OBJETIVO_COLORS.Hipertrofia}`}>
                     {ficha.objetivo}
                   </span>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                    <button
-                      onClick={() => abrirModal(ficha)}
-                      className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all duration-200"
-                      title="Editar Ficha"
-                    >
-                      <Pencil size={13} />
-                    </button>
-                    <button
-                      onClick={() => excluirFicha(ficha.id)}
-                      className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all duration-200"
-                      title="Excluir Ficha"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                  {!somenteLeitura && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      <button
+                        onClick={() => abrirModal(ficha)}
+                        className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all duration-200"
+                        title="Editar Ficha"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => excluirFicha(ficha.id)}
+                        className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all duration-200"
+                        title="Excluir Ficha"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <h3 className="text-sm font-bold text-zinc-900 dark:text-white mb-2 leading-snug">

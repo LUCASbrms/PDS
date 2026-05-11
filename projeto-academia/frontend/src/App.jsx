@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   LayoutDashboard, Users, Dumbbell, DollarSign, LogOut,
   Sun, Moon, Zap, CalendarCheck2, GraduationCap, Settings,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useTheme } from './context/ThemeContext';
 import { useToast } from './context/ToastContext';
@@ -23,6 +24,7 @@ export default function App() {
   const [usuario, setUsuario]                 = useState(null); // { tipo: 'dono'|'professor'|'aluno', dados: {...} }
   const [servidorOffline, setServidorOffline] = useState(false);
   const [telaAtiva, setTelaAtiva]             = useState('painel');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // ── Verifica se o servidor está online ────────────────────────────────────
   useEffect(() => {
@@ -66,6 +68,7 @@ export default function App() {
   // ── Auth ───────────────────────────────────────────────────────────────────
   function handleLogar({ tipo, dados }) {
     setUsuario({ tipo, dados });
+    setTelaAtiva(tipo === 'aluno' ? 'treinos' : 'painel');
     addToast(`Bem-vindo ao GymBalance${dados?.nome ? `, ${dados.nome.split(' ')[0]}` : ''}!`, 'success');
   }
 
@@ -118,32 +121,59 @@ export default function App() {
   ];
   const navItems = todosNavItems.filter(item => item.perfis.includes(tipoUsuario));
 
+  // Itens da nav mobile: navItems + configuracoes (dono) + logout
+  const mobileNavItems = [
+    ...navItems,
+    ...(tipoUsuario === 'dono' ? [{ id: 'configuracoes', label: 'Config.', icon: <Settings size={17} /> }] : []),
+    { id: '__logout__', label: 'Sair', icon: <LogOut size={17} />, isLogout: true },
+  ];
+
   return (
     <div className="flex h-screen bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-white font-sans">
-      {/* Sidebar */}
-      <aside className="w-60 shrink-0 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col">
-        <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+
+      {/* ── Sidebar — desktop only ── */}
+      <aside className={`hidden md:flex shrink-0 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex-col transition-[width] duration-300 overflow-hidden ${sidebarCollapsed ? 'w-16' : 'w-60'}`}>
+
+        {/* Header */}
+        <div className={`shrink-0 border-b border-zinc-100 dark:border-zinc-800 flex items-center transition-all duration-300 ${sidebarCollapsed ? 'flex-col gap-2 py-3 px-2 justify-center' : 'px-5 py-4 justify-between'}`}>
+          <div className="flex items-center gap-2.5 overflow-hidden">
             <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-md shadow-green-500/30 shrink-0">
               <Zap size={15} className="text-white" strokeWidth={2.5} />
             </div>
-            <span className="text-base font-black tracking-tight text-zinc-900 dark:text-white">GymBalance</span>
+            {!sidebarCollapsed && (
+              <span className="text-base font-black tracking-tight text-zinc-900 dark:text-white whitespace-nowrap">GymBalance</span>
+            )}
           </div>
-          <button
-            onClick={toggleTheme}
-            title={isDark ? 'Tema claro' : 'Tema escuro'}
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
-          >
-            {isDark ? <Sun size={15} /> : <Moon size={15} />}
-          </button>
+          <div className={`flex items-center gap-1 ${sidebarCollapsed ? 'flex-col' : ''}`}>
+            {!sidebarCollapsed && (
+              <button
+                onClick={toggleTheme}
+                title={isDark ? 'Tema claro' : 'Tema escuro'}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+              >
+                {isDark ? <Sun size={15} /> : <Moon size={15} />}
+              </button>
+            )}
+            <button
+              onClick={() => setSidebarCollapsed(v => !v)}
+              title={sidebarCollapsed ? 'Expandir painel' : 'Recolher painel'}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+            >
+              {sidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+            </button>
+          </div>
         </div>
 
-        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+        {/* Nav */}
+        <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
           {navItems.map(item => (
             <button
               key={item.id}
               onClick={() => setTelaAtiva(item.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+              title={sidebarCollapsed ? item.label : undefined}
+              className={`w-full flex items-center rounded-xl text-sm font-medium transition-all duration-200 ${
+                sidebarCollapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'
+              } ${
                 telaAtiva === item.id
                   ? 'bg-green-500/10 text-green-600 dark:text-green-400'
                   : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-white'
@@ -152,60 +182,152 @@ export default function App() {
               <span className={`shrink-0 transition-colors duration-200 ${telaAtiva === item.id ? 'text-green-500' : ''}`}>
                 {item.icon}
               </span>
-              <span>{item.label}</span>
-              {telaAtiva === item.id && (
-                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+              {!sidebarCollapsed && (
+                <>
+                  <span>{item.label}</span>
+                  {telaAtiva === item.id && (
+                    <span className="ml-auto w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                  )}
+                </>
               )}
             </button>
           ))}
         </nav>
 
-        <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 space-y-0.5">
-          {/* Usuário logado */}
-          <div className="px-3 py-2 mb-1">
-            <p className="text-xs font-semibold text-zinc-900 dark:text-white truncate">{dadosUsuario?.nome || '—'}</p>
-            <p className="text-xs text-zinc-400 capitalize">{tipoUsuario}</p>
-          </div>
-
+        {/* Footer */}
+        <div className="p-2 border-t border-zinc-100 dark:border-zinc-800 space-y-0.5">
+          {!sidebarCollapsed && (
+            <div className="px-3 py-2 mb-1">
+              <p className="text-xs font-semibold text-zinc-900 dark:text-white truncate">{dadosUsuario?.nome || '—'}</p>
+              <p className="text-xs text-zinc-400 capitalize">{tipoUsuario}</p>
+            </div>
+          )}
+          {sidebarCollapsed && (
+            <button
+              onClick={toggleTheme}
+              title={isDark ? 'Tema claro' : 'Tema escuro'}
+              className="w-full flex justify-center p-2.5 rounded-xl text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+            >
+              {isDark ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
+          )}
           {tipoUsuario === 'dono' && (
             <button
               onClick={() => setTelaAtiva('configuracoes')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+              title={sidebarCollapsed ? 'Configurações' : undefined}
+              className={`w-full flex items-center rounded-xl text-sm font-medium transition-all duration-200 ${
+                sidebarCollapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'
+              } ${
                 telaAtiva === 'configuracoes'
                   ? 'bg-green-500/10 text-green-600 dark:text-green-400'
                   : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-white'
               }`}
             >
               <Settings size={17} className={`shrink-0 transition-colors duration-200 ${telaAtiva === 'configuracoes' ? 'text-green-500' : ''}`} />
-              <span>Configurações</span>
-              {telaAtiva === 'configuracoes' && (
-                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+              {!sidebarCollapsed && (
+                <>
+                  <span>Configurações</span>
+                  {telaAtiva === 'configuracoes' && (
+                    <span className="ml-auto w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                  )}
+                </>
               )}
             </button>
           )}
           <button
             onClick={handleDeslogar}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all duration-200"
+            title={sidebarCollapsed ? 'Sair do Sistema' : undefined}
+            className={`w-full flex items-center rounded-xl text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all duration-200 ${
+              sidebarCollapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'
+            }`}
           >
             <LogOut size={16} className="shrink-0" />
-            Sair do Sistema
+            {!sidebarCollapsed && <span>Sair do Sistema</span>}
           </button>
         </div>
       </aside>
 
-      {/* Conteúdo principal */}
-      <main className="flex-1 overflow-y-auto bg-zinc-100 dark:bg-zinc-950 p-8">
-        <div key={telaAtiva} className="animate-fade-up max-w-6xl mx-auto">
-          {telaAtiva === 'painel'        && <Painel setTelaAtiva={setTelaAtiva} alunos={alunos} mensalidades={mensalidades} presencas={presencas} professores={professores} />}
-          {telaAtiva === 'alunos'        && <Alunos alunos={alunos} setAlunos={setAlunos} fichas={fichas} />}
-          {telaAtiva === 'presenca'      && <Presenca alunos={alunos} presencas={presencas} setPresencas={setPresencas} />}
-          {telaAtiva === 'professores'   && <Professores professores={professores} setProfessores={setProfessores} />}
-          {telaAtiva === 'treinos'       && <Treinos fichas={fichas} setFichas={setFichas} />}
-          {telaAtiva === 'financeiro'    && <Financeiro mensalidades={mensalidades} setMensalidades={setMensalidades} alunos={alunos} />}
-          {telaAtiva === 'pagamento'     && <Pagamento aluno={dadosUsuario} />}
-          {telaAtiva === 'configuracoes' && <Configuracoes />}
+      {/* ── Área de conteúdo ── */}
+      <div className="flex-1 flex flex-col min-h-0">
+
+        {/* Header mobile */}
+        <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-md shadow-green-500/30 shrink-0">
+              <Zap size={13} className="text-white" strokeWidth={2.5} />
+            </div>
+            <span className="font-black tracking-tight text-zinc-900 dark:text-white">GymBalance</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-xs font-semibold text-zinc-900 dark:text-white leading-none">{dadosUsuario?.nome?.split(' ')[0] || '—'}</p>
+              <p className="text-[10px] text-zinc-400 capitalize">{tipoUsuario}</p>
+            </div>
+            <button
+              onClick={toggleTheme}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+            >
+              {isDark ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
+          </div>
         </div>
-      </main>
+
+        {/* Conteúdo principal */}
+        <main className="flex-1 overflow-y-auto bg-zinc-100 dark:bg-zinc-950 p-4 md:p-8 pb-20 md:pb-8">
+          <div key={telaAtiva} className="animate-fade-up max-w-6xl mx-auto">
+            {(() => {
+            // Filtra dados conforme o perfil logado
+            const alunosVisiveis = tipoUsuario === 'professor'
+              ? alunos.filter(a => a.professorId === dadosUsuario.id)
+              : alunos;
+
+            const fichasVisiveis = tipoUsuario === 'aluno'
+              ? fichas.filter(f => (dadosUsuario.fichaIds || []).includes(String(f.id)))
+              : tipoUsuario === 'professor'
+              ? fichas.filter(f => f.professorId === dadosUsuario.id)
+              : fichas;
+
+            return (
+              <>
+                {telaAtiva === 'painel'        && <Painel setTelaAtiva={setTelaAtiva} alunos={alunosVisiveis} mensalidades={mensalidades} presencas={presencas} professores={professores} perfil={tipoUsuario} />}
+                {telaAtiva === 'alunos'        && <Alunos alunos={alunosVisiveis} setAlunos={setAlunos} fichas={fichasVisiveis} professores={professores} />}
+                {telaAtiva === 'presenca'      && <Presenca alunos={alunosVisiveis} presencas={presencas} setPresencas={setPresencas} />}
+                {telaAtiva === 'professores'   && <Professores professores={professores} setProfessores={setProfessores} />}
+                {telaAtiva === 'treinos'       && <Treinos fichas={fichasVisiveis} setFichas={setFichas} somenteLeitura={tipoUsuario === 'aluno'} />}
+                {telaAtiva === 'financeiro'    && <Financeiro mensalidades={mensalidades} setMensalidades={setMensalidades} alunos={alunos} />}
+                {telaAtiva === 'pagamento'     && <Pagamento aluno={dadosUsuario} mensalidades={mensalidades} presencas={presencas} />}
+                {telaAtiva === 'configuracoes' && <Configuracoes />}
+              </>
+            );
+            })()}
+          </div>
+        </main>
+      </div>
+
+      {/* ── Nav mobile (bottom) ── */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex items-stretch z-40">
+        {mobileNavItems.map(item => {
+          const ativo = !item.isLogout && telaAtiva === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => item.isLogout ? handleDeslogar() : setTelaAtiva(item.id)}
+              className={`flex flex-col items-center justify-center gap-0.5 py-2 flex-1 transition-all duration-200 ${
+                item.isLogout
+                  ? 'text-zinc-400 hover:text-red-500'
+                  : ativo
+                  ? 'text-green-600 dark:text-green-400'
+                  : 'text-zinc-400 hover:text-zinc-700 dark:hover:text-white'
+              }`}
+            >
+              <span className="shrink-0">{item.icon}</span>
+              <span className="text-[9px] font-semibold leading-none">{item.label}</span>
+              {ativo && <span className="absolute bottom-0 w-6 h-0.5 rounded-full bg-green-500" />}
+            </button>
+          );
+        })}
+      </nav>
+
     </div>
   );
 }

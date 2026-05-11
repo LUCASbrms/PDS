@@ -4,9 +4,10 @@ const pool    = require('../db');
 
 function mapFicha(row, exercicios = []) {
   return {
-    id:        row.id,
-    nome:      row.nome,
-    objetivo:  row.objetivo,
+    id:          row.id,
+    nome:        row.nome,
+    objetivo:    row.objetivo,
+    professorId: row.professor_id != null ? row.professor_id : null,
     partes:    row.partes || [],
     exercicios: exercicios
       .filter(ex => ex.ficha_id === row.id)

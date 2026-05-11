@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, GraduationCap, Lock } from 'lucide-react';
+import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, GraduationCap, Lock, ShieldOff } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { professoresApi } from '../api';
 
@@ -313,7 +313,8 @@ export default function Professores({ professores, setProfessores }) {
       </div>
 
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
-        <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm min-w-[560px]">
           <thead>
             <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/40">
               {['Professor', 'Contato', 'Especialidade', 'Status', 'Ações'].map(h => (
@@ -332,7 +333,15 @@ export default function Professores({ professores, setProfessores }) {
                       {prof.nome.trim().split(' ').slice(0,2).map(n => n[0]).join('').toUpperCase()}
                     </div>
                     <div>
-                      <p className="font-semibold text-zinc-900 dark:text-white">{prof.nome}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-zinc-900 dark:text-white">{prof.nome}</p>
+                        {!prof.temSenha && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-orange-500/10 text-orange-500 border border-orange-500/20" title="Sem senha — não consegue logar">
+                            <ShieldOff size={10} />
+                            Sem acesso
+                          </span>
+                        )}
+                      </div>
                       {prof.cpf && <p className="text-xs text-zinc-400 mt-0.5">CPF: {prof.cpf}</p>}
                     </div>
                   </div>
@@ -382,6 +391,7 @@ export default function Professores({ professores, setProfessores }) {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

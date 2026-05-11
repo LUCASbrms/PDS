@@ -112,6 +112,7 @@ CREATE TABLE donos (
   telefone      VARCHAR(20),
   cpf           VARCHAR(14),
   nome_academia VARCHAR(150),
+  chave_pix     VARCHAR(100),
   criado_em     TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
   atualizado_em TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
 

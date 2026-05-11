@@ -16,7 +16,9 @@ function mapAluno(row) {
     plano:         row.plano         || 'Mensal',
     vencimento:    row.vencimento ? new Date(row.vencimento).toISOString().slice(0, 10) : '',
     status:        row.status        || 'Ativo',
-    fichaId:       row.ficha_id != null ? String(row.ficha_id) : '',
+    fichaId:       row.ficha_id      != null ? String(row.ficha_id)      : '',
+    fichaIds:      Array.isArray(row.ficha_ids) ? row.ficha_ids.map(id => String(id)) : [],
+    professorId:   row.professor_id  != null ? row.professor_id          : null,
     treinosSemana: {
       segunda: ts.segunda || '',
       terca:   ts.terca   || '',
@@ -49,24 +51,28 @@ router.get('/', async (_req, res) => {
 
 // POST — criar
 router.post('/', async (req, res) => {
-  const { nome, nascimento, cpf, telefone, altura, peso, plano, vencimento, status, fichaId, treinosSemana, senha } = req.body;
+  const { nome, nascimento, cpf, telefone, altura, peso, plano, vencimento, status, fichaIds, professorId, treinosSemana, senha } = req.body;
   if (!nome?.trim()) return res.status(400).json({ erro: 'Nome é obrigatório.' });
   try {
     const senhaHash = senha ? await bcrypt.hash(senha, 10) : null;
+    const fichaIdsArr = Array.isArray(fichaIds) ? fichaIds : [];
+    const fichaIdPrimario = fichaIdsArr.length > 0 ? fichaIdsArr[0] : null;
     const { rows } = await pool.query(
-      `INSERT INTO alunos (nome, nascimento, cpf, telefone, altura, peso, plano, vencimento, status, ficha_id, treinos_semana, senha_hash)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      `INSERT INTO alunos (nome, nascimento, cpf, telefone, altura, peso, plano, vencimento, status, ficha_id, ficha_ids, professor_id, treinos_semana, senha_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
       [
         nome.trim(),
-        nascimento  || null,
-        cpf         || null,
-        telefone    || null,
-        altura      || null,
-        peso        || null,
-        plano       || 'Mensal',
-        vencimento  || null,
-        status      || 'Ativo',
-        fichaId     || null,
+        nascimento    || null,
+        cpf           || null,
+        telefone      || null,
+        altura        || null,
+        peso          || null,
+        plano         || 'Mensal',
+        vencimento    || null,
+        status        || 'Ativo',
+        fichaIdPrimario,
+        JSON.stringify(fichaIdsArr),
+        professorId   || null,
         JSON.stringify(treinosSemana || { segunda: '', terca: '', quarta: '', quinta: '', sexta: '' }),
         senhaHash,
       ],
@@ -80,27 +86,31 @@ router.post('/', async (req, res) => {
 // PUT — atualizar
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const { nome, nascimento, cpf, telefone, altura, peso, plano, vencimento, status, fichaId, treinosSemana, senha } = req.body;
+  const { nome, nascimento, cpf, telefone, altura, peso, plano, vencimento, status, fichaIds, professorId, treinosSemana, senha } = req.body;
   if (!nome?.trim()) return res.status(400).json({ erro: 'Nome é obrigatório.' });
+  const fichaIdsArr = Array.isArray(fichaIds) ? fichaIds : [];
+  const fichaIdPrimario = fichaIdsArr.length > 0 ? fichaIdsArr[0] : null;
   try {
     let query, params;
     if (senha && senha.length >= 6) {
       const senhaHash = await bcrypt.hash(senha, 10);
       query = `UPDATE alunos
                SET nome=$1, nascimento=$2, cpf=$3, telefone=$4, altura=$5, peso=$6,
-                   plano=$7, vencimento=$8, status=$9, ficha_id=$10, treinos_semana=$11, senha_hash=$12
-               WHERE id=$13 RETURNING *`;
+                   plano=$7, vencimento=$8, status=$9, ficha_id=$10, ficha_ids=$11,
+                   professor_id=$12, treinos_semana=$13, senha_hash=$14
+               WHERE id=$15 RETURNING *`;
       params = [nome.trim(), nascimento||null, cpf||null, telefone||null, altura||null, peso||null,
-                plano||'Mensal', vencimento||null, status||'Ativo', fichaId||null,
-                JSON.stringify(treinosSemana||{}), senhaHash, id];
+                plano||'Mensal', vencimento||null, status||'Ativo', fichaIdPrimario, JSON.stringify(fichaIdsArr),
+                professorId||null, JSON.stringify(treinosSemana||{}), senhaHash, id];
     } else {
       query = `UPDATE alunos
                SET nome=$1, nascimento=$2, cpf=$3, telefone=$4, altura=$5, peso=$6,
-                   plano=$7, vencimento=$8, status=$9, ficha_id=$10, treinos_semana=$11
-               WHERE id=$12 RETURNING *`;
+                   plano=$7, vencimento=$8, status=$9, ficha_id=$10, ficha_ids=$11,
+                   professor_id=$12, treinos_semana=$13
+               WHERE id=$14 RETURNING *`;
       params = [nome.trim(), nascimento||null, cpf||null, telefone||null, altura||null, peso||null,
-                plano||'Mensal', vencimento||null, status||'Ativo', fichaId||null,
-                JSON.stringify(treinosSemana||{}), id];
+                plano||'Mensal', vencimento||null, status||'Ativo', fichaIdPrimario, JSON.stringify(fichaIdsArr),
+                professorId||null, JSON.stringify(treinosSemana||{}), id];
     }
     const { rows } = await pool.query(query, params);
     if (!rows.length) return res.status(404).json({ erro: 'Aluno não encontrado.' });

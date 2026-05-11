@@ -222,13 +222,14 @@ export default function Financeiro({ mensalidades, setMensalidades, alunos }) {
 
       {/* Tabela */}
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
         {mensalidades.length === 0 ? (
           <div className="text-center py-16 text-zinc-400">
             <p className="font-medium">Nenhum pagamento registrado.</p>
             <p className="text-sm mt-1">Clique em "Registrar Pagamento" para começar.</p>
           </div>
         ) : (
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-sm min-w-[700px]">
             <thead>
               <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/40">
                 {['Aluno', 'Plano', 'Valor', 'Vencimento', 'Pagamento', 'Status', 'Ações'].map(h => (
@@ -266,6 +267,7 @@ export default function Financeiro({ mensalidades, setMensalidades, alunos }) {
             </tbody>
           </table>
         )}
+        </div>
       </div>
 
       {/* Modal */}
