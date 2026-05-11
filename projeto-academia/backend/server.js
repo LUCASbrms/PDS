@@ -8,7 +8,8 @@ const pool           = require('./db');
 const alunosRouter      = require('./routes/alunos');
 const professoresRouter = require('./routes/professores');
 const donosRouter       = require('./routes/donos');
-const fichasRouter      = require('./routes/fichas');
+const fichasRouter        = require('./routes/fichas');
+const mensalidadesRouter  = require('./routes/mensalidades');
 
 const app = express();
 
@@ -19,7 +20,8 @@ app.use(express.json());
 app.use('/api/alunos',      alunosRouter);
 app.use('/api/professores', professoresRouter);
 app.use('/api/donos',       donosRouter);
-app.use('/api/fichas',      fichasRouter);
+app.use('/api/fichas',        fichasRouter);
+app.use('/api/mensalidades',  mensalidadesRouter);
 
 app.get('/', (_req, res) => res.send('FitSystem API rodando! 🚀'));
 
@@ -30,9 +32,20 @@ async function iniciar() {
     await pool.query('SELECT 1');
     console.log('✓ Conectado ao PostgreSQL');
 
-    const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
-    await pool.query(sql);
-    console.log('✓ Tabelas sincronizadas');
+    const { rows } = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'donos'
+      ) AS existe
+    `);
+
+    if (!rows[0].existe) {
+      const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
+      await pool.query(sql);
+      console.log('✓ Tabelas criadas');
+    } else {
+      console.log('✓ Tabelas já existem — dados preservados');
+    }
   } catch (err) {
     console.error('✗ Erro ao conectar ao banco de dados:', err.message);
     console.error('  Verifique as variáveis no arquivo .env e tente novamente.');

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from './context/ThemeContext';
 import { useToast } from './context/ToastContext';
-import { alunosApi, professoresApi, donoApi, fichasApi } from './api';
+import { alunosApi, professoresApi, donoApi, fichasApi, mensalidadesApi } from './api';
 import Alunos       from './pages/Alunos';
 import Painel       from './pages/Painel';
 import Treinos      from './pages/Treinos';
@@ -13,13 +13,14 @@ import Financeiro   from './pages/Financeiro';
 import Presenca     from './pages/Presenca';
 import Professores  from './pages/Professores';
 import Configuracoes from './pages/Configuracoes';
+import Pagamento    from './pages/Pagamento';
 import Login        from './pages/Login';
 
 export default function App() {
   const { isDark, toggleTheme } = useTheme();
   const { addToast }            = useToast();
 
-  const [estaLogado, setEstaLogado]           = useState(false);
+  const [usuario, setUsuario]                 = useState(null); // { tipo: 'dono'|'professor'|'aluno', dados: {...} }
   const [servidorOffline, setServidorOffline] = useState(false);
   const [telaAtiva, setTelaAtiva]             = useState('painel');
 
@@ -39,16 +40,11 @@ export default function App() {
   const [presencas, setPresencas]     = useState([]);
   const [fichas, setFichas]           = useState([]);
 
-  const [mensalidades, setMensalidades] = useState([
-    { id: 1, aluno: 'João Silva',     plano: 'Anual',       valor: 1200.00, data: '2026-04-15', status: 'Pago' },
-    { id: 2, aluno: 'Maria Oliveira', plano: 'Mensal',      valor:  130.00, data: '2026-04-10', status: 'Pendente' },
-    { id: 3, aluno: 'Carlos Souza',   plano: 'Trimestral',  valor:  330.00, data: '2026-04-22', status: 'Pago' },
-    { id: 4, aluno: 'Ana Costa',      plano: 'Mensal',      valor:  130.00, data: '2026-03-01', status: 'Atrasado' },
-  ]);
+  const [mensalidades, setMensalidades] = useState([]);
 
   // ── Carrega dados do banco ao logar ───────────────────────────────────────
   useEffect(() => {
-    if (!estaLogado) return;
+    if (!usuario) return;
 
     alunosApi.listar()
       .then(data => setAlunos(data))
@@ -61,16 +57,20 @@ export default function App() {
     fichasApi.listar()
       .then(data => setFichas(data))
       .catch(() => {});
-  }, [estaLogado]);
+
+    mensalidadesApi.listar()
+      .then(data => setMensalidades(data))
+      .catch(() => {});
+  }, [usuario]);
 
   // ── Auth ───────────────────────────────────────────────────────────────────
-  function handleLogar(dono) {
-    setEstaLogado(true);
-    addToast(`Bem-vindo ao GymBalance${dono?.nome ? `, ${dono.nome.split(' ')[0]}` : ''}!`, 'success');
+  function handleLogar({ tipo, dados }) {
+    setUsuario({ tipo, dados });
+    addToast(`Bem-vindo ao GymBalance${dados?.nome ? `, ${dados.nome.split(' ')[0]}` : ''}!`, 'success');
   }
 
   function handleDeslogar() {
-    setEstaLogado(false);
+    setUsuario(null);
     setTelaAtiva('painel');
   }
 
@@ -100,19 +100,23 @@ export default function App() {
     );
   }
 
-  if (!estaLogado) {
+  if (!usuario) {
     return <Login aoLogar={handleLogar} />;
   }
 
-  // ── Navegação ──────────────────────────────────────────────────────────────
-  const navItems = [
-    { id: 'painel',        label: 'Painel',        icon: <LayoutDashboard size={17} /> },
-    { id: 'alunos',        label: 'Alunos',        icon: <Users size={17} /> },
-    { id: 'presenca',      label: 'Presença',      icon: <CalendarCheck2 size={17} /> },
-    { id: 'professores',   label: 'Professores',   icon: <GraduationCap size={17} /> },
-    { id: 'treinos',       label: 'Treinos',       icon: <Dumbbell size={17} /> },
-    { id: 'financeiro',    label: 'Financeiro',    icon: <DollarSign size={17} /> },
+  const { tipo: tipoUsuario, dados: dadosUsuario } = usuario;
+
+  // ── Navegação por perfil ───────────────────────────────────────────────────
+  const todosNavItems = [
+    { id: 'painel',      label: 'Painel',      icon: <LayoutDashboard size={17} />, perfis: ['dono', 'professor'] },
+    { id: 'alunos',      label: 'Alunos',      icon: <Users size={17} />,           perfis: ['dono', 'professor'] },
+    { id: 'presenca',    label: 'Presença',    icon: <CalendarCheck2 size={17} />,  perfis: ['dono', 'professor'] },
+    { id: 'professores', label: 'Professores', icon: <GraduationCap size={17} />,   perfis: ['dono'] },
+    { id: 'treinos',     label: 'Treinos',     icon: <Dumbbell size={17} />,        perfis: ['dono', 'professor', 'aluno'] },
+    { id: 'financeiro',  label: 'Financeiro',  icon: <DollarSign size={17} />,      perfis: ['dono'] },
+    { id: 'pagamento',   label: 'Pagamento',   icon: <DollarSign size={17} />,      perfis: ['aluno'] },
   ];
+  const navItems = todosNavItems.filter(item => item.perfis.includes(tipoUsuario));
 
   return (
     <div className="flex h-screen bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-white font-sans">
@@ -157,20 +161,28 @@ export default function App() {
         </nav>
 
         <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 space-y-0.5">
-          <button
-            onClick={() => setTelaAtiva('configuracoes')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-              telaAtiva === 'configuracoes'
-                ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-white'
-            }`}
-          >
-            <Settings size={17} className={`shrink-0 transition-colors duration-200 ${telaAtiva === 'configuracoes' ? 'text-green-500' : ''}`} />
-            <span>Configurações</span>
-            {telaAtiva === 'configuracoes' && (
-              <span className="ml-auto w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
-            )}
-          </button>
+          {/* Usuário logado */}
+          <div className="px-3 py-2 mb-1">
+            <p className="text-xs font-semibold text-zinc-900 dark:text-white truncate">{dadosUsuario?.nome || '—'}</p>
+            <p className="text-xs text-zinc-400 capitalize">{tipoUsuario}</p>
+          </div>
+
+          {tipoUsuario === 'dono' && (
+            <button
+              onClick={() => setTelaAtiva('configuracoes')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                telaAtiva === 'configuracoes'
+                  ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-white'
+              }`}
+            >
+              <Settings size={17} className={`shrink-0 transition-colors duration-200 ${telaAtiva === 'configuracoes' ? 'text-green-500' : ''}`} />
+              <span>Configurações</span>
+              {telaAtiva === 'configuracoes' && (
+                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+              )}
+            </button>
+          )}
           <button
             onClick={handleDeslogar}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all duration-200"
@@ -189,7 +201,8 @@ export default function App() {
           {telaAtiva === 'presenca'      && <Presenca alunos={alunos} presencas={presencas} setPresencas={setPresencas} />}
           {telaAtiva === 'professores'   && <Professores professores={professores} setProfessores={setProfessores} />}
           {telaAtiva === 'treinos'       && <Treinos fichas={fichas} setFichas={setFichas} />}
-          {telaAtiva === 'financeiro'    && <Financeiro mensalidades={mensalidades} setMensalidades={setMensalidades} />}
+          {telaAtiva === 'financeiro'    && <Financeiro mensalidades={mensalidades} setMensalidades={setMensalidades} alunos={alunos} />}
+          {telaAtiva === 'pagamento'     && <Pagamento aluno={dadosUsuario} />}
           {telaAtiva === 'configuracoes' && <Configuracoes />}
         </div>
       </main>

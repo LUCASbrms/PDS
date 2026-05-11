@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, GraduationCap } from 'lucide-react';
+import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, GraduationCap, Lock } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { professoresApi } from '../api';
 
@@ -57,7 +57,7 @@ function StatusBadge({ status }) {
   );
 }
 
-const FORM_VAZIO = { nome: '', email: '', telefone: '', cpf: '', especialidade: '', status: 'Ativo' };
+const FORM_VAZIO = { nome: '', email: '', telefone: '', cpf: '', especialidade: '', status: 'Ativo', senha: '' };
 
 export default function Professores({ professores, setProfessores }) {
   const { addToast } = useToast();
@@ -89,6 +89,7 @@ export default function Professores({ professores, setProfessores }) {
       cpf:           prof.cpf,
       especialidade: prof.especialidade,
       status:        prof.status,
+      senha:         '',
     });
     setErros({});
     setExibindoForm(true);
@@ -109,6 +110,7 @@ export default function Professores({ professores, setProfessores }) {
                                                        e.telefone = 'Telefone inválido';
     if (form.cpf && form.cpf.replace(/\D/g, '').length !== 11)
                                                        e.cpf = 'CPF inválido — informe 11 dígitos';
+    if (form.senha && form.senha.length < 6)           e.senha = 'Senha deve ter ao menos 6 caracteres';
     setErros(e);
     return Object.keys(e).length === 0;
   }
@@ -238,6 +240,27 @@ export default function Professores({ professores, setProfessores }) {
                   <option>Inativo</option>
                 </select>
               </div>
+            </div>
+          </section>
+
+          {/* Acesso ao Sistema */}
+          <section>
+            <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">
+              Acesso ao Sistema
+            </h3>
+            <div>
+              <label className={LBL}>{professorEditando ? 'Nova Senha (deixe em branco para manter)' : 'Senha de Acesso'}</label>
+              <div className="relative">
+                <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                <input
+                  type="password" value={form.senha}
+                  onChange={e => set('senha', e.target.value)}
+                  className={inputCls(!!erros.senha) + ' pl-10'}
+                  placeholder="Mínimo 6 caracteres"
+                />
+              </div>
+              <FieldError msg={erros.senha} />
+              <p className="text-xs text-zinc-400 mt-1">O professor usará e-mail + senha para entrar no sistema.</p>
             </div>
           </section>
 

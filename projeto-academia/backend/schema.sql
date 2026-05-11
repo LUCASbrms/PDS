@@ -141,6 +141,7 @@ CREATE TABLE professores (
   cpf           VARCHAR(14),
   especialidade VARCHAR(100),
   status        status_professor_enum NOT NULL DEFAULT 'Ativo',
+  senha_hash    VARCHAR(255),
   criado_em     TIMESTAMPTZ           NOT NULL DEFAULT NOW(),
   atualizado_em TIMESTAMPTZ           NOT NULL DEFAULT NOW(),
 
@@ -249,6 +250,7 @@ CREATE TABLE alunos (
   status         status_aluno_enum NOT NULL DEFAULT 'Ativo',
   treinos_semana JSONB             NOT NULL DEFAULT '{"segunda":"","terca":"","quarta":"","quinta":"","sexta":""}',
   observacoes    TEXT,
+  senha_hash     VARCHAR(255),
   criado_em      TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
   atualizado_em  TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, Eye, Dumbbell } from 'lucide-react';
+import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, Eye, Dumbbell, Lock } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { alunosApi } from '../api';
 import AlunoDetalhe from './AlunoDetalhe';
@@ -58,7 +58,7 @@ function StatusBadge({ status }) {
 
 const FORM_VAZIO = {
   nome: '', nascimento: '', cpf: '', telefone: '',
-  altura: '', peso: '', plano: 'Mensal', vencimento: '', fichaId: '',
+  altura: '', peso: '', plano: 'Mensal', vencimento: '', fichaId: '', senha: '',
 };
 
 export default function Alunos({ alunos, setAlunos, fichas }) {
@@ -95,6 +95,7 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
       plano:       aluno.plano,
       vencimento:  aluno.vencimento,
       fichaId:     aluno.fichaId || '',
+      senha:       '',
     });
     setErros({});
     setExibindoForm(true);
@@ -120,6 +121,7 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
     const peso = parseFloat(form.peso);
     if (!form.peso || isNaN(peso) || peso <= 0)              e.peso = 'Peso inválido';
     if (!form.vencimento)                                    e.vencimento = 'Data de vencimento obrigatória';
+    if (form.senha && form.senha.length < 6)                 e.senha = 'Senha deve ter ao menos 6 caracteres';
     setErros(e);
     return Object.keys(e).length === 0;
   }
@@ -310,6 +312,25 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
                   {fichas.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
                 </select>
               </div>
+            </div>
+          </section>
+
+          {/* Acesso ao Sistema */}
+          <section>
+            <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">Acesso ao Sistema</h3>
+            <div>
+              <label className={LBL}>{alunoEditando ? 'Nova Senha (deixe em branco para manter)' : 'Senha de Acesso'}</label>
+              <div className="relative">
+                <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                <input
+                  type="password" value={form.senha}
+                  onChange={e => set('senha', e.target.value)}
+                  className={inputCls(!!erros.senha) + ' pl-10'}
+                  placeholder="Mínimo 6 caracteres"
+                />
+              </div>
+              <FieldError msg={erros.senha} />
+              <p className="text-xs text-zinc-400 mt-1">O aluno usará CPF + senha para entrar no sistema.</p>
             </div>
           </section>
 

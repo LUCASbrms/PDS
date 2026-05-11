@@ -25,6 +25,7 @@ export const alunosApi = {
   criar:     (dados)       => request('POST',   '/alunos',       dados),
   atualizar: (id, dados)   => request('PUT',    `/alunos/${id}`, dados),
   excluir:   (id)          => request('DELETE', `/alunos/${id}`),
+  login:     (dados)       => request('POST',   '/alunos/login', dados),
 };
 
 export const professoresApi = {
@@ -32,6 +33,7 @@ export const professoresApi = {
   criar:     (dados)       => request('POST',   '/professores',       dados),
   atualizar: (id, dados)   => request('PUT',    `/professores/${id}`, dados),
   excluir:   (id)          => request('DELETE', `/professores/${id}`),
+  login:     (dados)       => request('POST',   '/professores/login', dados),
 };
 
 export const donoApi = {
@@ -46,4 +48,11 @@ export const fichasApi = {
   criar:     (dados)       => request('POST',   '/fichas',       dados),
   atualizar: (id, dados)   => request('PUT',    `/fichas/${id}`, dados),
   excluir:   (id)          => request('DELETE', `/fichas/${id}`),
+};
+
+export const mensalidadesApi = {
+  listar:    ()            => request('GET',    '/mensalidades'),
+  criar:     (dados)       => request('POST',   '/mensalidades',       dados),
+  atualizar: (id, dados)   => request('PUT',    `/mensalidades/${id}`, dados),
+  excluir:   (id)          => request('DELETE', `/mensalidades/${id}`),
 };
