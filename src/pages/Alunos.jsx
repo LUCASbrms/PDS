@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, Eye, Dumbbell } from 'lucide-react';
+import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, Eye, Dumbbell, Lock, ShieldOff } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { alunosApi } from '../api';
 import AlunoDetalhe from './AlunoDetalhe';
 
 function mascaraCPF(v) {
@@ -57,10 +58,10 @@ function StatusBadge({ status }) {
 
 const FORM_VAZIO = {
   nome: '', nascimento: '', cpf: '', telefone: '',
-  altura: '', peso: '', plano: 'Mensal', vencimento: '', fichaId: '',
+  altura: '', peso: '', plano: 'Mensal', vencimento: '', fichaIds: [], professorId: '', senha: '',
 };
 
-export default function Alunos({ alunos, setAlunos, fichas }) {
+export default function Alunos({ alunos, setAlunos, fichas, professores = [] }) {
   const { addToast } = useToast();
   const [exibindoForm, setExibindoForm] = useState(false);
   const [alunoEditando, setAlunoEditando] = useState(null);
@@ -93,7 +94,9 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
       peso:        aluno.peso,
       plano:       aluno.plano,
       vencimento:  aluno.vencimento,
-      fichaId:     aluno.fichaId || '',
+      fichaIds:    aluno.fichaIds    || [],
+      professorId: aluno.professorId != null ? String(aluno.professorId) : '',
+      senha:       '',
     });
     setErros({});
     setExibindoForm(true);
@@ -119,35 +122,65 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
     const peso = parseFloat(form.peso);
     if (!form.peso || isNaN(peso) || peso <= 0)              e.peso = 'Peso inválido';
     if (!form.vencimento)                                    e.vencimento = 'Data de vencimento obrigatória';
+    if (form.senha && form.senha.length < 6)                 e.senha = 'Senha deve ter ao menos 6 caracteres';
     setErros(e);
     return Object.keys(e).length === 0;
   }
 
-  function salvarAluno(e) {
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvarAluno(e) {
     e.preventDefault();
     if (!validar()) {
       addToast('Corrija os campos destacados antes de continuar.', 'error');
       return;
     }
-    if (alunoEditando) {
-      setAlunos(alunos.map(a => a.id === alunoEditando.id ? { ...a, ...form } : a));
-      addToast('Aluno atualizado com sucesso!', 'success');
-    } else {
-      setAlunos([...alunos, { id: Date.now(), ...form, status: 'Ativo' }]);
-      addToast('Aluno cadastrado com sucesso!', 'success');
+    setSalvando(true);
+    try {
+      if (alunoEditando) {
+        const atualizado = await alunosApi.atualizar(alunoEditando.id, {
+          ...form,
+          treinosSemana: alunoEditando.treinosSemana || { segunda: '', terca: '', quarta: '', quinta: '', sexta: '' },
+        });
+        setAlunos(prev => prev.map(a => a.id === alunoEditando.id ? atualizado : a));
+        addToast('Aluno atualizado com sucesso!', 'success');
+      } else {
+        const novo = await alunosApi.criar({
+          ...form,
+          status: 'Ativo',
+          treinosSemana: { segunda: '', terca: '', quarta: '', quinta: '', sexta: '' },
+        });
+        setAlunos(prev => [...prev, novo]);
+        addToast('Aluno cadastrado com sucesso!', 'success');
+      }
+      fecharForm();
+    } catch (err) {
+      addToast(err.message || 'Erro ao salvar aluno.', 'error');
+    } finally {
+      setSalvando(false);
     }
-    fecharForm();
   }
 
-  function excluirAluno(id) {
-    if (confirm('Tem certeza que deseja excluir este aluno?')) {
-      setAlunos(alunos.filter(a => a.id !== id));
+  async function excluirAluno(id) {
+    if (!confirm('Tem certeza que deseja excluir este aluno?')) return;
+    try {
+      await alunosApi.excluir(id);
+      setAlunos(prev => prev.filter(a => a.id !== id));
       addToast('Aluno excluído.', 'warning');
+    } catch (err) {
+      addToast(err.message || 'Erro ao excluir aluno.', 'error');
     }
   }
 
-  function atualizarTreinosSemana(alunoId, novosTreinos) {
+  async function atualizarTreinosSemana(alunoId, novosTreinos) {
+    const aluno = alunos.find(a => a.id === alunoId);
+    if (!aluno) return;
     setAlunos(prev => prev.map(a => a.id === alunoId ? { ...a, treinosSemana: novosTreinos } : a));
+    try {
+      await alunosApi.atualizar(alunoId, { ...aluno, treinosSemana: novosTreinos });
+    } catch {
+      // falha silenciosa — UI já atualizou optimisticamente
+    }
   }
 
   const alunosFiltrados = alunos.filter(a =>
@@ -273,13 +306,70 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
                 />
                 <FieldError msg={erros.vencimento} />
               </div>
+              <div className="md:col-span-3">
+                <label className={LBL}>Fichas de Treino</label>
+                {fichas.length === 0 ? (
+                  <p className="text-xs text-zinc-400 italic py-2">Nenhuma ficha cadastrada.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {fichas.map(f => {
+                      const checked = form.fichaIds.includes(String(f.id));
+                      return (
+                        <label
+                          key={f.id}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm cursor-pointer transition-all duration-150 select-none ${
+                            checked
+                              ? 'bg-green-500/10 border-green-500/40 text-green-700 dark:text-green-400'
+                              : 'bg-zinc-50 dark:bg-zinc-800/80 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-green-400'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="accent-green-500"
+                            checked={checked}
+                            onChange={() => {
+                              const id = String(f.id);
+                              set('fichaIds', checked
+                                ? form.fichaIds.filter(x => x !== id)
+                                : [...form.fichaIds, id]);
+                            }}
+                          />
+                          {f.nome}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-xs text-zinc-400 mt-1.5">Selecione uma ou mais fichas para vincular ao aluno.</p>
+              </div>
               <div>
-                <label className={LBL}>Ficha de Treino</label>
-                <select value={form.fichaId} onChange={e => set('fichaId', e.target.value)} className={inputCls(false)}>
-                  <option value="">Sem ficha vinculada</option>
-                  {fichas.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                <label className={LBL}>Professor Responsável</label>
+                <select value={form.professorId} onChange={e => set('professorId', e.target.value)} className={inputCls(false)}>
+                  <option value="">Sem professor vinculado</option>
+                  {professores.filter(p => p.status === 'Ativo').map(p => (
+                    <option key={p.id} value={p.id}>{p.nome}</option>
+                  ))}
                 </select>
               </div>
+            </div>
+          </section>
+
+          {/* Acesso ao Sistema */}
+          <section>
+            <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">Acesso ao Sistema</h3>
+            <div>
+              <label className={LBL}>{alunoEditando ? 'Nova Senha (deixe em branco para manter)' : 'Senha de Acesso'}</label>
+              <div className="relative">
+                <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                <input
+                  type="password" value={form.senha}
+                  onChange={e => set('senha', e.target.value)}
+                  className={inputCls(!!erros.senha) + ' pl-10'}
+                  placeholder="Mínimo 6 caracteres"
+                />
+              </div>
+              <FieldError msg={erros.senha} />
+              <p className="text-xs text-zinc-400 mt-1">O aluno usará CPF + senha para entrar no sistema.</p>
             </div>
           </section>
 
@@ -291,10 +381,10 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
               Cancelar
             </button>
             <button
-              type="submit"
-              className="flex-1 bg-green-500 hover:bg-green-400 active:bg-green-600 text-white font-semibold py-2.5 rounded-xl shadow-md shadow-green-500/25 hover:shadow-green-500/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+              type="submit" disabled={salvando}
+              className="flex-1 bg-green-500 hover:bg-green-400 active:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-xl shadow-md shadow-green-500/25 hover:shadow-green-500/35 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
             >
-              {alunoEditando ? 'Salvar Alterações' : 'Salvar Matrícula'}
+              {salvando ? 'Salvando…' : alunoEditando ? 'Salvar Alterações' : 'Salvar Matrícula'}
             </button>
           </div>
         </form>
@@ -331,7 +421,8 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
       </div>
 
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
-        <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm min-w-[640px]">
           <thead>
             <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/40">
               {['Aluno', 'Físico', 'Plano', 'Treino', 'Status', 'Ações'].map(h => (
@@ -343,7 +434,15 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
             {alunosFiltrados.length > 0 ? alunosFiltrados.map(aluno => (
               <tr key={aluno.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors duration-150">
                 <td className="px-5 py-4">
-                  <p className="font-semibold text-zinc-900 dark:text-white">{aluno.nome}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-zinc-900 dark:text-white">{aluno.nome}</p>
+                    {!aluno.temSenha && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-orange-500/10 text-orange-500 border border-orange-500/20" title="Sem senha — não consegue logar">
+                        <ShieldOff size={10} />
+                        Sem acesso
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-zinc-400 mt-0.5">{aluno.telefone}</p>
                 </td>
                 <td className="px-5 py-4">
@@ -405,6 +504,7 @@ export default function Alunos({ alunos, setAlunos, fichas }) {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
