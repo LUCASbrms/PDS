@@ -396,5 +396,3 @@ export default function Professores({ professores, setProfessores }) {
     </div>
   );
 }
-
-//teste // teste
