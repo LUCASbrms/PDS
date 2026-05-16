@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
-import { AlertCircle, Save, Building2, User, Eye, EyeOff, CheckCircle2, QrCode } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { AlertCircle, Save, Building2, User, Eye, EyeOff, CheckCircle2, QrCode, Camera, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
-import { donoApi } from '../api';
+import { donoApi, uploadsApi } from '../api';
+
+const API_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3000';
 
 function mascaraCPF(v) {
   return v.replace(/\D/g, '')
@@ -46,13 +48,16 @@ const FORM_VAZIO = { nome: '', email: '', senha: '', confirmarSenha: '', telefon
 
 export default function Configuracoes({ aoRegistrar }) {
   const { addToast } = useToast();
-  const [form, setForm]         = useState(FORM_VAZIO);
-  const [erros, setErros]       = useState({});
-  const [donoId, setDonoId]     = useState(null);
+  const [form, setForm]             = useState(FORM_VAZIO);
+  const [erros, setErros]           = useState({});
+  const [donoId, setDonoId]         = useState(null);
   const [carregando, setCarregando] = useState(true);
-  const [salvando, setSalvando] = useState(false);
-  const [verSenha, setVerSenha] = useState(false);
-  const [salvoOk, setSalvoOk]   = useState(false);
+  const [salvando, setSalvando]     = useState(false);
+  const [verSenha, setVerSenha]     = useState(false);
+  const [salvoOk, setSalvoOk]       = useState(false);
+  const [fotoPreview, setFotoPreview] = useState(null);
+  const [fotoArquivo, setFotoArquivo] = useState(null);
+  const inputFotoRef                  = useRef(null);
 
   useEffect(() => {
     donoApi.obter()
@@ -69,6 +74,7 @@ export default function Configuracoes({ aoRegistrar }) {
             nomeAcademia:  dono.nomeAcademia  || '',
             chavePix:      dono.chavePix      || '',
           });
+          if (dono.fotoUrl) setFotoPreview(`${API_BASE}${dono.fotoUrl}`);
         }
       })
       .catch(() => {}) // nenhum dono cadastrado ainda
@@ -78,6 +84,19 @@ export default function Configuracoes({ aoRegistrar }) {
   function set(campo, valor) {
     setForm(prev => ({ ...prev, [campo]: valor }));
     if (erros[campo]) setErros(prev => ({ ...prev, [campo]: null }));
+  }
+
+  function onSelecionarFoto(e) {
+    const arquivo = e.target.files[0];
+    if (!arquivo) return;
+    setFotoArquivo(arquivo);
+    setFotoPreview(URL.createObjectURL(arquivo));
+  }
+
+  function removerFoto() {
+    setFotoArquivo(null);
+    setFotoPreview(null);
+    if (inputFotoRef.current) inputFotoRef.current.value = '';
   }
 
   function validar() {
@@ -121,15 +140,23 @@ export default function Configuracoes({ aoRegistrar }) {
     };
 
     try {
+      let dono;
       if (donoId) {
-        await donoApi.atualizar(donoId, payload);
+        dono = await donoApi.atualizar(donoId, payload);
         addToast('Perfil atualizado com sucesso!', 'success');
       } else {
-        const novo = await donoApi.registrar(payload);
-        setDonoId(novo.id);
+        dono = await donoApi.registrar(payload);
+        setDonoId(dono.id);
         addToast('Academia registrada com sucesso!', 'success');
         aoRegistrar?.();
       }
+
+      if (fotoArquivo && dono?.id) {
+        const { fotoUrl } = await uploadsApi.enviarFotoDono(dono.id, fotoArquivo);
+        setFotoPreview(`${API_BASE}${fotoUrl}`);
+        setFotoArquivo(null);
+      }
+
       setForm(prev => ({ ...prev, senha: '', confirmarSenha: '' }));
       setSalvoOk(true);
       setTimeout(() => setSalvoOk(false), 3000);
@@ -185,6 +212,37 @@ export default function Configuracoes({ aoRegistrar }) {
               <User size={14} className="text-green-500" />
             </div>
             <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest">Perfil do Dono</h3>
+          </div>
+
+          {/* ── Foto do dono ── */}
+          <div className="flex flex-col items-center gap-3 mb-5">
+            <div className="relative">
+              <div className="w-24 h-24 rounded-full overflow-hidden bg-zinc-100 dark:bg-zinc-800 border-2 border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
+                {fotoPreview
+                  ? <img src={fotoPreview} alt="Foto" className="w-full h-full object-cover" />
+                  : <Camera size={32} className="text-zinc-400" />
+                }
+              </div>
+              {fotoPreview && (
+                <button
+                  type="button"
+                  onClick={removerFoto}
+                  className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 hover:bg-red-400 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            <input ref={inputFotoRef} type="file" accept="image/*" className="hidden" onChange={onSelecionarFoto} />
+            <button
+              type="button"
+              onClick={() => inputFotoRef.current?.click()}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
+            >
+              <Camera size={13} />
+              {fotoPreview ? 'Trocar foto' : 'Adicionar foto'}
+            </button>
+            <p className="text-xs text-zinc-400">JPG, PNG ou WEBP · máx. 5 MB</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

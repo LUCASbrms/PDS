@@ -82,19 +82,23 @@ export const pagamentoApi = {
   criarSessao: (mensalidadeId) => request('POST', '/pagamento/criar-sessao', { mensalidadeId }),
 };
 
+async function enviarFotoParaRota(rota, arquivo) {
+  const form = new FormData();
+  form.append('foto', arquivo);
+  const token = localStorage.getItem('gymbalance_token');
+  const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+  const res  = await fetch(`${BASE}${rota}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.erro || 'Erro ao enviar foto.');
+  return data;
+}
+
 export const uploadsApi = {
-  enviarFoto: async (alunoId, arquivo) => {
-    const form = new FormData();
-    form.append('foto', arquivo);
-    const token = localStorage.getItem('gymbalance_token');
-    const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-    const res  = await fetch(`${BASE}/uploads/foto/${alunoId}`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: form,
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(data?.erro || 'Erro ao enviar foto.');
-    return data;
-  },
+  enviarFoto:          (alunoId,      arquivo) => enviarFotoParaRota(`/uploads/foto/${alunoId}`,           arquivo),
+  enviarFotoProfessor: (professorId,  arquivo) => enviarFotoParaRota(`/uploads/professor/${professorId}`,  arquivo),
+  enviarFotoDono:      (donoId,       arquivo) => enviarFotoParaRota(`/uploads/dono/${donoId}`,            arquivo),
 };

@@ -15,6 +15,7 @@ function mapProfessor(row) {
     especialidade: row.especialidade || '',
     status:        row.status        || 'Ativo',
     temSenha:      !!row.senha_hash,
+    fotoUrl:       row.foto_url      || '',
   };
 }
 

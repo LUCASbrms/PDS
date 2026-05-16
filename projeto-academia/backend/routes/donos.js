@@ -14,6 +14,7 @@ function mapDono(row) {
     cpf:          row.cpf           || '',
     nomeAcademia: row.nome_academia || '',
     chavePix:     row.chave_pix     || '',
+    fotoUrl:      row.foto_url      || '',
   };
 }
 
