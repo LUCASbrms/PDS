@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, GraduationCap, Lock, ShieldOff } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, GraduationCap, Lock, ShieldOff, Camera, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
-import { professoresApi } from '../api';
+import { professoresApi, uploadsApi } from '../api';
+
+const API_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3000';
 
 function mascaraCPF(v) {
   return v.replace(/\D/g, '')
@@ -61,22 +63,40 @@ const FORM_VAZIO = { nome: '', email: '', telefone: '', cpf: '', especialidade: 
 
 export default function Professores({ professores, setProfessores }) {
   const { addToast } = useToast();
-  const [exibindoForm, setExibindoForm]       = useState(false);
+  const [exibindoForm, setExibindoForm]           = useState(false);
   const [professorEditando, setProfessorEditando] = useState(null);
-  const [busca, setBusca]                     = useState('');
-  const [erros, setErros]                     = useState({});
-  const [salvando, setSalvando]               = useState(false);
-  const [form, setForm]                       = useState(FORM_VAZIO);
+  const [busca, setBusca]                         = useState('');
+  const [erros, setErros]                         = useState({});
+  const [salvando, setSalvando]                   = useState(false);
+  const [form, setForm]                           = useState(FORM_VAZIO);
+  const [fotoPreview, setFotoPreview]             = useState(null);
+  const [fotoArquivo, setFotoArquivo]             = useState(null);
+  const inputFotoRef                              = useRef(null);
 
   function set(campo, valor) {
     setForm(prev => ({ ...prev, [campo]: valor }));
     if (erros[campo]) setErros(prev => ({ ...prev, [campo]: null }));
   }
 
+  function onSelecionarFoto(e) {
+    const arquivo = e.target.files[0];
+    if (!arquivo) return;
+    setFotoArquivo(arquivo);
+    setFotoPreview(URL.createObjectURL(arquivo));
+  }
+
+  function removerFoto() {
+    setFotoArquivo(null);
+    setFotoPreview(null);
+    if (inputFotoRef.current) inputFotoRef.current.value = '';
+  }
+
   function abrirNovo() {
     setProfessorEditando(null);
     setForm(FORM_VAZIO);
     setErros({});
+    setFotoPreview(null);
+    setFotoArquivo(null);
     setExibindoForm(true);
   }
 
@@ -92,6 +112,8 @@ export default function Professores({ professores, setProfessores }) {
       senha:         '',
     });
     setErros({});
+    setFotoPreview(prof.fotoUrl ? `${API_BASE}${prof.fotoUrl}` : null);
+    setFotoArquivo(null);
     setExibindoForm(true);
   }
 
@@ -100,6 +122,8 @@ export default function Professores({ professores, setProfessores }) {
     setProfessorEditando(null);
     setForm(FORM_VAZIO);
     setErros({});
+    setFotoPreview(null);
+    setFotoArquivo(null);
   }
 
   function validar() {
@@ -123,15 +147,22 @@ export default function Professores({ professores, setProfessores }) {
     }
     setSalvando(true);
     try {
+      let professor;
       if (professorEditando) {
-        const atualizado = await professoresApi.atualizar(professorEditando.id, form);
-        setProfessores(prev => prev.map(p => p.id === professorEditando.id ? atualizado : p));
+        professor = await professoresApi.atualizar(professorEditando.id, form);
+        setProfessores(prev => prev.map(p => p.id === professorEditando.id ? professor : p));
         addToast('Professor atualizado com sucesso!', 'success');
       } else {
-        const novo = await professoresApi.criar(form);
-        setProfessores(prev => [...prev, novo]);
+        professor = await professoresApi.criar(form);
+        setProfessores(prev => [...prev, professor]);
         addToast('Professor cadastrado com sucesso!', 'success');
       }
+
+      if (fotoArquivo && professor?.id) {
+        const { fotoUrl } = await uploadsApi.enviarFotoProfessor(professor.id, fotoArquivo);
+        setProfessores(prev => prev.map(p => p.id === professor.id ? { ...p, fotoUrl } : p));
+      }
+
       fecharForm();
     } catch (err) {
       addToast(err.message || 'Erro ao salvar professor.', 'error');
@@ -172,6 +203,37 @@ export default function Professores({ professores, setProfessores }) {
         </h2>
 
         <form onSubmit={salvarProfessor} noValidate className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-7 space-y-7 shadow-sm">
+          {/* ── Foto do professor ── */}
+          <section className="flex flex-col items-center gap-3">
+            <div className="relative">
+              <div className="w-24 h-24 rounded-full overflow-hidden bg-zinc-100 dark:bg-zinc-800 border-2 border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
+                {fotoPreview
+                  ? <img src={fotoPreview} alt="Foto" className="w-full h-full object-cover" />
+                  : <Camera size={32} className="text-zinc-400" />
+                }
+              </div>
+              {fotoPreview && (
+                <button
+                  type="button"
+                  onClick={removerFoto}
+                  className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 hover:bg-red-400 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            <input ref={inputFotoRef} type="file" accept="image/*" className="hidden" onChange={onSelecionarFoto} />
+            <button
+              type="button"
+              onClick={() => inputFotoRef.current?.click()}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
+            >
+              <Camera size={13} />
+              {fotoPreview ? 'Trocar foto' : 'Adicionar foto'}
+            </button>
+            <p className="text-xs text-zinc-400">JPG, PNG ou WEBP · máx. 5 MB</p>
+          </section>
+
           {/* Dados Pessoais */}
           <section>
             <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">
@@ -329,8 +391,11 @@ export default function Professores({ professores, setProfessores }) {
               <tr key={prof.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors duration-150">
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-green-500/10 text-green-600 dark:text-green-400 flex items-center justify-center text-xs font-bold shrink-0 select-none">
-                      {prof.nome.trim().split(' ').slice(0,2).map(n => n[0]).join('').toUpperCase()}
+                    <div className="w-9 h-9 rounded-full overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shrink-0 flex items-center justify-center">
+                      {prof.fotoUrl
+                        ? <img src={`${API_BASE}${prof.fotoUrl}`} alt={prof.nome} className="w-full h-full object-cover" />
+                        : <span className="text-xs font-bold text-green-600 dark:text-green-400">{prof.nome.trim().split(' ').slice(0,2).map(n => n[0]).join('').toUpperCase()}</span>
+                      }
                     </div>
                     <div>
                       <div className="flex items-center gap-2">

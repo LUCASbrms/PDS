@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard, Users, Dumbbell, DollarSign, LogOut,
   Sun, Moon, Zap, CalendarCheck2, GraduationCap, Settings,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Camera,
 } from 'lucide-react';
 import { useTheme } from './context/ThemeContext';
 import { useToast } from './context/ToastContext';
-import { alunosApi, professoresApi, donoApi, fichasApi, mensalidadesApi } from './api';
+import { alunosApi, professoresApi, donoApi, fichasApi, mensalidadesApi, presencasApi, uploadsApi } from './api';
+
+const API_SERVER = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace('/api', '');
 import Alunos       from './pages/Alunos';
 import Painel       from './pages/Painel';
 import Treinos      from './pages/Treinos';
@@ -21,9 +23,22 @@ export default function App() {
   const { isDark, toggleTheme } = useTheme();
   const { addToast }            = useToast();
 
-  const [usuario, setUsuario]                 = useState(null); // { tipo: 'dono'|'professor'|'aluno', dados: {...} }
+  const [usuario, setUsuario]                 = useState(() => {
+    try {
+      const token = localStorage.getItem('gymbalance_token');
+      if (!token) return null;
+      return JSON.parse(localStorage.getItem('gymbalance_usuario')) ?? null;
+    } catch { return null; }
+  });
   const [servidorOffline, setServidorOffline] = useState(false);
-  const [telaAtiva, setTelaAtiva]             = useState('painel');
+  const [telaAtiva, setTelaAtiva]             = useState(() => {
+    try {
+      const token = localStorage.getItem('gymbalance_token');
+      if (!token) return 'painel';
+      const u = JSON.parse(localStorage.getItem('gymbalance_usuario'));
+      return u?.tipo === 'aluno' ? 'treinos' : 'painel';
+    } catch { return 'painel'; }
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // ── Verifica se o servidor está online ────────────────────────────────────
@@ -34,6 +49,16 @@ export default function App() {
           setServidorOffline(true);
         }
       });
+  }, []);
+
+  // ── Logout automático quando token expira ─────────────────────────────────
+  useEffect(() => {
+    function handleLogout() {
+      setUsuario(null);
+      setTelaAtiva('painel');
+    }
+    window.addEventListener('gymbalance:logout', handleLogout);
+    return () => window.removeEventListener('gymbalance:logout', handleLogout);
   }, []);
 
   // ── Estado global ──────────────────────────────────────────────────────────
@@ -63,18 +88,61 @@ export default function App() {
     mensalidadesApi.listar()
       .then(data => setMensalidades(data))
       .catch(() => {});
+
+    presencasApi.listar()
+      .then(data => setPresencas(data))
+      .catch(() => {});
   }, [usuario]);
 
+  // ── Retorno do Stripe ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const resultado = params.get('pagamento');
+    if (resultado === 'sucesso') {
+      addToast('Pagamento realizado com sucesso!', 'success');
+      mensalidadesApi.listar().then(data => setMensalidades(data)).catch(() => {});
+    } else if (resultado === 'cancelado') {
+      addToast('Pagamento cancelado.', 'warning');
+    }
+    if (resultado) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   // ── Auth ───────────────────────────────────────────────────────────────────
-  function handleLogar({ tipo, dados }) {
-    setUsuario({ tipo, dados });
+  function handleLogar({ tipo, dados, token }) {
+    const session = { tipo, dados };
+    setUsuario(session);
+    localStorage.setItem('gymbalance_usuario', JSON.stringify(session));
+    if (token) localStorage.setItem('gymbalance_token', token);
     setTelaAtiva(tipo === 'aluno' ? 'treinos' : 'painel');
     addToast(`Bem-vindo ao GymBalance${dados?.nome ? `, ${dados.nome.split(' ')[0]}` : ''}!`, 'success');
   }
 
   function handleDeslogar() {
     setUsuario(null);
+    localStorage.removeItem('gymbalance_usuario');
+    localStorage.removeItem('gymbalance_token');
     setTelaAtiva('painel');
+  }
+
+  const inputFotoAlunoRef = useRef(null);
+
+  async function handleFotoAluno(e) {
+    const arquivo = e.target.files?.[0];
+    if (!arquivo || !usuario?.dados?.id) return;
+    try {
+      const resultado = await uploadsApi.enviarFoto(usuario.dados.id, arquivo);
+      const novosDados = { ...usuario.dados, fotoUrl: resultado.fotoUrl };
+      const novaSession = { tipo: usuario.tipo, dados: novosDados };
+      setUsuario(novaSession);
+      localStorage.setItem('gymbalance_usuario', JSON.stringify(novaSession));
+      setAlunos(prev => prev.map(a => a.id === usuario.dados.id ? { ...a, fotoUrl: resultado.fotoUrl } : a));
+      addToast('Foto atualizada com sucesso!', 'success');
+    } catch (err) {
+      addToast(err.message || 'Erro ao enviar foto.', 'error');
+    }
+    e.target.value = '';
   }
 
   if (servidorOffline) {
@@ -197,10 +265,69 @@ export default function App() {
         {/* Footer */}
         <div className="p-2 border-t border-zinc-100 dark:border-zinc-800 space-y-0.5">
           {!sidebarCollapsed && (
-            <div className="px-3 py-2 mb-1">
-              <p className="text-xs font-semibold text-zinc-900 dark:text-white truncate">{dadosUsuario?.nome || '—'}</p>
-              <p className="text-xs text-zinc-400 capitalize">{tipoUsuario}</p>
+            <div className="px-3 py-2 mb-1 flex items-center gap-3">
+              {tipoUsuario === 'aluno' ? (
+                <button
+                  onClick={() => inputFotoAlunoRef.current?.click()}
+                  title="Alterar foto"
+                  className="relative w-9 h-9 rounded-full shrink-0 group overflow-hidden focus:outline-none"
+                >
+                  {dadosUsuario?.fotoUrl ? (
+                    <img
+                      src={`${API_SERVER}${dadosUsuario.fotoUrl}`}
+                      alt={dadosUsuario.nome}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-green-500/20 flex items-center justify-center text-green-600 dark:text-green-400 text-xs font-bold">
+                      {(dadosUsuario?.nome || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()}
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Camera size={12} className="text-white" />
+                  </div>
+                </button>
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-300 shrink-0">
+                  {(dadosUsuario?.nome || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()}
+                </div>
+              )}
+              <div className="overflow-hidden">
+                <p className="text-xs font-semibold text-zinc-900 dark:text-white truncate">{dadosUsuario?.nome || '—'}</p>
+                <p className="text-xs text-zinc-400 capitalize">{tipoUsuario}</p>
+              </div>
             </div>
+          )}
+          {tipoUsuario === 'aluno' && (
+            <input
+              ref={inputFotoAlunoRef}
+              type="file"
+              accept=".jpg,.jpeg,.png,.webp"
+              className="hidden"
+              onChange={handleFotoAluno}
+            />
+          )}
+          {sidebarCollapsed && tipoUsuario === 'aluno' && (
+            <button
+              onClick={() => inputFotoAlunoRef.current?.click()}
+              title="Alterar foto"
+              className="relative w-10 h-10 mx-auto rounded-full overflow-hidden group focus:outline-none flex items-center justify-center"
+            >
+              {dadosUsuario?.fotoUrl ? (
+                <img
+                  src={`${API_SERVER}${dadosUsuario.fotoUrl}`}
+                  alt={dadosUsuario.nome}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-green-500/20 flex items-center justify-center text-green-600 dark:text-green-400 text-xs font-bold">
+                  {(dadosUsuario?.nome || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()}
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <Camera size={12} className="text-white" />
+              </div>
+            </button>
           )}
           {sidebarCollapsed && (
             <button
@@ -263,6 +390,24 @@ export default function App() {
               <p className="text-xs font-semibold text-zinc-900 dark:text-white leading-none">{dadosUsuario?.nome?.split(' ')[0] || '—'}</p>
               <p className="text-[10px] text-zinc-400 capitalize">{tipoUsuario}</p>
             </div>
+            {tipoUsuario === 'aluno' && (
+              <button
+                onClick={() => inputFotoAlunoRef.current?.click()}
+                title="Alterar foto"
+                className="relative w-8 h-8 rounded-full overflow-hidden shrink-0 group focus:outline-none"
+              >
+                {dadosUsuario?.fotoUrl ? (
+                  <img src={`${API_SERVER}${dadosUsuario.fotoUrl}`} alt={dadosUsuario.nome} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-green-500/20 flex items-center justify-center text-green-600 dark:text-green-400 text-[10px] font-bold">
+                    {(dadosUsuario?.nome || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()}
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Camera size={10} className="text-white" />
+                </div>
+              </button>
+            )}
             <button
               onClick={toggleTheme}
               className="w-7 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
@@ -295,7 +440,7 @@ export default function App() {
                 {telaAtiva === 'professores'   && <Professores professores={professores} setProfessores={setProfessores} />}
                 {telaAtiva === 'treinos'       && <Treinos fichas={fichasVisiveis} setFichas={setFichas} somenteLeitura={tipoUsuario === 'aluno'} />}
                 {telaAtiva === 'financeiro'    && <Financeiro mensalidades={mensalidades} setMensalidades={setMensalidades} alunos={alunos} />}
-                {telaAtiva === 'pagamento'     && <Pagamento aluno={dadosUsuario} mensalidades={mensalidades} presencas={presencas} />}
+                {telaAtiva === 'pagamento'     && <Pagamento aluno={dadosUsuario} mensalidades={mensalidades} />}
                 {telaAtiva === 'configuracoes' && <Configuracoes />}
               </>
             );

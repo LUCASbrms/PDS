@@ -1,7 +1,15 @@
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
+function getToken() {
+  return localStorage.getItem('gymbalance_token');
+}
+
 async function request(method, path, body) {
   const options = { method, headers: {} };
+
+  const token = getToken();
+  if (token) options.headers['Authorization'] = `Bearer ${token}`;
+
   if (body !== undefined) {
     options.headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(body);
@@ -12,6 +20,13 @@ async function request(method, path, body) {
   if (res.status === 204) return null;
 
   const data = await res.json().catch(() => null);
+
+  if (res.status === 401) {
+    localStorage.removeItem('gymbalance_token');
+    localStorage.removeItem('gymbalance_usuario');
+    window.dispatchEvent(new Event('gymbalance:logout'));
+    return;
+  }
 
   if (!res.ok) {
     throw new Error(data?.erro || `Erro ${res.status}`);
@@ -55,4 +70,35 @@ export const mensalidadesApi = {
   criar:     (dados)       => request('POST',   '/mensalidades',       dados),
   atualizar: (id, dados)   => request('PUT',    `/mensalidades/${id}`, dados),
   excluir:   (id)          => request('DELETE', `/mensalidades/${id}`),
+};
+
+export const presencasApi = {
+  listar:  ()          => request('GET',    '/presencas'),
+  criar:   (dados)     => request('POST',   '/presencas',       dados),
+  excluir: (id)        => request('DELETE', `/presencas/${id}`),
+};
+
+export const pagamentoApi = {
+  criarSessao: (mensalidadeId) => request('POST', '/pagamento/criar-sessao', { mensalidadeId }),
+};
+
+async function enviarFotoParaRota(rota, arquivo) {
+  const form = new FormData();
+  form.append('foto', arquivo);
+  const token = localStorage.getItem('gymbalance_token');
+  const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+  const res  = await fetch(`${BASE}${rota}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.erro || 'Erro ao enviar foto.');
+  return data;
+}
+
+export const uploadsApi = {
+  enviarFoto:          (alunoId,      arquivo) => enviarFotoParaRota(`/uploads/foto/${alunoId}`,           arquivo),
+  enviarFotoProfessor: (professorId,  arquivo) => enviarFotoParaRota(`/uploads/professor/${professorId}`,  arquivo),
+  enviarFotoDono:      (donoId,       arquivo) => enviarFotoParaRota(`/uploads/dono/${donoId}`,            arquivo),
 };
