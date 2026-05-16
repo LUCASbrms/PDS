@@ -44,15 +44,15 @@ export default function Login({ aoLogar }) {
     setErro('');
     setCarregando(true);
     try {
-      let dados;
+      let resposta;
       if (perfil === 'dono') {
-        dados = await donoApi.login({ email, senha });
+        resposta = await donoApi.login({ email, senha });
       } else if (perfil === 'professor') {
-        dados = await professoresApi.login({ email, senha });
+        resposta = await professoresApi.login({ email, senha });
       } else {
-        dados = await alunosApi.login({ cpf, senha });
+        resposta = await alunosApi.login({ cpf, senha });
       }
-      aoLogar({ tipo: perfil, dados });
+      aoLogar({ tipo: perfil, dados: resposta.usuario, token: resposta.token });
     } catch (err) {
       setErro(err.message || 'Credenciais incorretas.');
     } finally {
@@ -68,8 +68,8 @@ export default function Login({ aoLogar }) {
     setCarregando(true);
     try {
       await donoApi.registrar({ nome, email, senha });
-      const dados = await donoApi.login({ email, senha });
-      aoLogar({ tipo: 'dono', dados });
+      const resposta = await donoApi.login({ email, senha });
+      aoLogar({ tipo: 'dono', dados: resposta.usuario, token: resposta.token });
     } catch (err) {
       setErro(err.message || 'Erro ao criar conta.');
     } finally {

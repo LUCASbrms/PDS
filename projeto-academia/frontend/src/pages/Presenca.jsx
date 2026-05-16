@@ -4,6 +4,7 @@ import {
   Users, ClipboardCheck, RotateCcw,
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { presencasApi } from '../api';
 
 function initials(nome) {
   const parts = nome.trim().split(' ').filter(Boolean);
@@ -39,43 +40,54 @@ export default function Presenca({ alunos, presencas, setPresencas }) {
   const [busca, setBusca] = useState('');
   const [filtro, setFiltro] = useState('todos');
 
+  function mudarData(novaData) {
+    setData(novaData);
+    setFiltro('todos');
+  }
+
   function getStatus(alunoId) {
     return presencas.find(p => p.alunoId === alunoId && p.data === data)?.status ?? null;
   }
 
-  function marcar(alunoId, novoStatus) {
-    setPresencas(prev => {
-      const idx = prev.findIndex(p => p.alunoId === alunoId && p.data === data);
-      if (idx >= 0) {
-        if (prev[idx].status === novoStatus) {
-          return prev.filter((_, i) => i !== idx);
-        }
-        return prev.map((p, i) => (i === idx ? { ...p, status: novoStatus } : p));
-      }
-      return [...prev, { id: Date.now() + Math.random(), alunoId, data, status: novoStatus }];
-    });
+  async function marcar(alunoId, novoStatus) {
+    try {
+      const salvo = await presencasApi.criar({ alunoId, data, status: novoStatus });
+      setPresencas(prev => {
+        const idx = prev.findIndex(p => p.alunoId === alunoId && p.data === data);
+        if (idx >= 0) return prev.map((p, i) => (i === idx ? salvo : p));
+        return [...prev, salvo];
+      });
+    } catch (err) {
+      addToast(err.message || 'Erro ao registrar presença.', 'error');
+    }
   }
 
-  function desmarcar(alunoId) {
-    setPresencas(prev => prev.filter(p => !(p.alunoId === alunoId && p.data === data)));
+  async function desmarcar(alunoId) {
+    const existente = presencas.find(p => p.alunoId === alunoId && p.data === data);
+    if (!existente) return;
+    try {
+      await presencasApi.excluir(existente.id);
+      setPresencas(prev => prev.filter(p => !(p.alunoId === alunoId && p.data === data)));
+    } catch (err) {
+      addToast(err.message || 'Erro ao remover presença.', 'error');
+    }
   }
 
-  function marcarTodosPresentes() {
+  async function marcarTodosPresentes() {
     const naoMarcados = alunos.filter(a => getStatus(a.id) === null);
     if (!naoMarcados.length) {
       addToast('Todos os alunos já estão registrados.', 'info');
       return;
     }
-    setPresencas(prev => [
-      ...prev,
-      ...naoMarcados.map(a => ({
-        id: Date.now() + Math.random(),
-        alunoId: a.id,
-        data,
-        status: 'Presente',
-      })),
-    ]);
-    addToast(`${naoMarcados.length} aluno(s) marcado(s) como presente(s)!`, 'success');
+    try {
+      const salvos = await Promise.all(
+        naoMarcados.map(a => presencasApi.criar({ alunoId: a.id, data, status: 'Presente' }))
+      );
+      setPresencas(prev => [...prev, ...salvos]);
+      addToast(`${salvos.length} aluno(s) marcado(s) como presente(s)!`, 'success');
+    } catch (err) {
+      addToast(err.message || 'Erro ao registrar presenças.', 'error');
+    }
   }
 
   const doDay      = presencas.filter(p => p.data === data);
@@ -133,7 +145,7 @@ export default function Presenca({ alunos, presencas, setPresencas }) {
             <input
               type="date"
               value={data}
-              onChange={e => setData(e.target.value)}
+              onChange={e => mudarData(e.target.value)}
               className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl py-2.5 pl-9 pr-3.5 text-sm text-zinc-900 dark:text-white outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all duration-200"
             />
           </div>

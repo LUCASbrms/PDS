@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Copy, Check, CreditCard, QrCode, Calendar, Tag,
-  CheckCircle2, XCircle, Clock, TrendingUp, AlertTriangle,
+  CheckCircle2, TrendingUp, AlertTriangle, Loader2,
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
-import { donoApi } from '../api';
+import { donoApi, pagamentoApi } from '../api';
 
 function formatarData(str) {
   if (!str) return '—';
@@ -26,27 +26,14 @@ function StatusPagamentoBadge({ status }) {
   );
 }
 
-function StatusPresencaBadge({ status }) {
-  const map = {
-    Presente:    { cls: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20', icon: <CheckCircle2 size={11} /> },
-    Falta:       { cls: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',         icon: <XCircle size={11} /> },
-    Justificada: { cls: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20', icon: <Clock size={11} /> },
-  };
-  const cfg = map[status];
-  if (!cfg) return null;
-  return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cfg.cls}`}>
-      {cfg.icon}{status}
-    </span>
-  );
-}
 
-export default function Pagamento({ aluno, mensalidades = [], presencas = [] }) {
+export default function Pagamento({ aluno, mensalidades = [] }) {
   const { addToast } = useToast();
-  const [copiado, setCopiado] = useState(false);
-  const [metodo, setMetodo]   = useState(null);
-  const [pixKey, setPixKey]   = useState('');
-  const [pixNome, setPixNome] = useState('Academia GymBalance');
+  const [copiado, setCopiado]       = useState(false);
+  const [metodo, setMetodo]         = useState(null);
+  const [pixKey, setPixKey]         = useState('');
+  const [pixNome, setPixNome]       = useState('Academia GymBalance');
+  const [pagando, setPagando]       = useState(false);
 
   useEffect(() => {
     donoApi.obter().then(dono => {
@@ -55,27 +42,38 @@ export default function Pagamento({ aluno, mensalidades = [], presencas = [] }) 
     }).catch(() => {});
   }, []);
 
-  // Mensalidades deste aluno, mais recente primeiro
+  // Todas as mensalidades deste aluno, mais recente primeiro
   const minhasMensalidades = useMemo(() =>
     mensalidades
       .filter(m => String(m.alunoId) === String(aluno?.id))
       .sort((a, b) => new Date(b.vencimento) - new Date(a.vencimento)),
     [mensalidades, aluno?.id]
   );
-  const mensalidadeAtual = minhasMensalidades[0] ?? null;
 
-  // Presenças deste aluno, mais recente primeiro
-  const minhasPresencas = useMemo(() =>
-    presencas
-      .filter(p => String(p.alunoId) === String(aluno?.id))
-      .sort((a, b) => new Date(b.data) - new Date(a.data))
-      .slice(0, 30),
-    [presencas, aluno?.id]
+  // Apenas as pendentes/atrasadas (para selecionar qual pagar)
+  const mensalidadesPendentes = useMemo(() =>
+    minhasMensalidades.filter(m => m.status !== 'Pago'),
+    [minhasMensalidades]
   );
 
-  const totalPresentes = minhasPresencas.filter(p => p.status === 'Presente').length;
-  const totalFaltas    = minhasPresencas.filter(p => p.status === 'Falta').length;
-  const totalJustific  = minhasPresencas.filter(p => p.status === 'Justificada').length;
+  const [mensalidadeSelecionadaId, setMensalidadeSelecionadaId] = useState(null);
+
+  // Seleciona automaticamente a mais antiga pendente quando a lista muda
+  useEffect(() => {
+    if (mensalidadesPendentes.length > 0) {
+      setMensalidadeSelecionadaId(prev =>
+        prev && mensalidadesPendentes.find(m => m.id === prev)
+          ? prev
+          : mensalidadesPendentes[mensalidadesPendentes.length - 1].id
+      );
+    } else {
+      setMensalidadeSelecionadaId(null);
+    }
+  }, [mensalidadesPendentes]);
+
+  const mensalidadeAtual = minhasMensalidades[0] ?? null;
+  const mensalidadeSelecionada = mensalidadesPendentes.find(m => m.id === mensalidadeSelecionadaId) ?? null;
+
 
   function copiarPix() {
     navigator.clipboard.writeText(pixKey).then(() => {
@@ -83,6 +81,18 @@ export default function Pagamento({ aluno, mensalidades = [], presencas = [] }) 
       addToast('Chave PIX copiada!', 'success');
       setTimeout(() => setCopiado(false), 2500);
     });
+  }
+
+  async function pagarComCartao() {
+    if (!mensalidadeSelecionada) return;
+    setPagando(true);
+    try {
+      const { url } = await pagamentoApi.criarSessao(mensalidadeSelecionada.id);
+      window.location.href = url;
+    } catch (err) {
+      addToast(err.message || 'Erro ao iniciar pagamento.', 'error');
+      setPagando(false);
+    }
   }
 
   return (
@@ -162,6 +172,58 @@ export default function Pagamento({ aluno, mensalidades = [], presencas = [] }) 
       <section>
         <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest mb-3">Realizar Pagamento</h3>
 
+        {/* Seletor de mensalidade */}
+        {mensalidadesPendentes.length === 0 ? (
+          <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 rounded-2xl p-4 mb-4">
+            <CheckCircle2 size={18} className="text-green-500 shrink-0" />
+            <p className="text-sm font-semibold text-green-600 dark:text-green-400">
+              Nenhuma mensalidade pendente. Tudo em dia!
+            </p>
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 mb-4">
+            <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3">
+              Selecione o mês a pagar
+            </p>
+            <div className="space-y-2">
+              {mensalidadesPendentes.slice().reverse().map(m => {
+                const selecionada = m.id === mensalidadeSelecionadaId;
+                const atrasada = m.status === 'Atrasado';
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => setMensalidadeSelecionadaId(m.id)}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all duration-200 text-left ${
+                      selecionada
+                        ? 'border-blue-500 bg-blue-500/5'
+                        : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                        selecionada ? 'border-blue-500 bg-blue-500' : 'border-zinc-300 dark:border-zinc-600'
+                      }`}>
+                        {selecionada && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-900 dark:text-white">
+                          {m.plano} · venc. {formatarData(m.vencimento)}
+                        </p>
+                        <p className={`text-xs mt-0.5 ${atrasada ? 'text-red-500' : 'text-orange-500'}`}>
+                          {atrasada ? 'Em atraso' : 'Pendente'}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-sm font-bold text-zinc-900 dark:text-white">
+                      R$ {Number(m.valor).toFixed(2)}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3 mb-4">
           <button
             onClick={() => setMetodo(metodo === 'pix' ? null : 'pix')}
@@ -221,10 +283,10 @@ export default function Pagamento({ aluno, mensalidades = [], presencas = [] }) 
                 </button>
               </div>
             </div>
-            {mensalidadeAtual && (
+            {mensalidadeSelecionada && (
               <div className="bg-zinc-50 dark:bg-zinc-800 rounded-xl p-4">
                 <p className="text-xs text-zinc-400 mb-1">Valor</p>
-                <p className="text-xl font-black text-green-500">R$ {Number(mensalidadeAtual.valor).toFixed(2)}</p>
+                <p className="text-xl font-black text-green-500">R$ {Number(mensalidadeSelecionada.valor).toFixed(2)}</p>
               </div>
             )}
             <p className="text-xs text-zinc-400 mt-4 text-center">
@@ -240,77 +302,41 @@ export default function Pagamento({ aluno, mensalidades = [], presencas = [] }) 
               <h4 className="font-bold text-zinc-900 dark:text-white">Pagamento com Cartão</h4>
             </div>
             <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
-              O pagamento com cartão é realizado presencialmente na recepção. Aceitamos:
+              Pague online com segurança via Stripe. Aceitamos débito e crédito.
             </p>
-            <div className="space-y-3">
-              {[
-                { label: 'Débito',  detalhe: 'Aprovação imediata',       cor: 'text-blue-500',   bg: 'bg-blue-500/10' },
-                { label: 'Crédito', detalhe: 'Parcelamento disponível',  cor: 'text-purple-500', bg: 'bg-purple-500/10' },
-              ].map(op => (
-                <div key={op.label} className="flex items-center gap-3 bg-zinc-50 dark:bg-zinc-800 rounded-xl p-4">
-                  <div className={`${op.bg} p-2 rounded-lg`}>
-                    <CreditCard size={16} className={op.cor} />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-zinc-900 dark:text-white text-sm">{op.label}</p>
-                    <p className="text-xs text-zinc-400">{op.detalhe}</p>
-                  </div>
-                  <CheckCircle2 size={16} className="text-green-500 ml-auto" />
+
+            {mensalidadeSelecionada ? (
+              <>
+                <div className="bg-zinc-50 dark:bg-zinc-800 rounded-xl p-4 mb-4">
+                  <p className="text-xs text-zinc-400 mb-1">Valor a pagar · venc. {formatarData(mensalidadeSelecionada.vencimento)}</p>
+                  <p className="text-2xl font-black text-blue-500">R$ {Number(mensalidadeSelecionada.valor).toFixed(2)}</p>
                 </div>
-              ))}
-            </div>
-            <div className="mt-5 bg-zinc-50 dark:bg-zinc-800 rounded-xl p-4 text-center">
-              <p className="text-xs text-zinc-400">Dirija-se à recepção com seu documento e cartão.</p>
-              <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 mt-1">Seg–Sex 6h–22h · Sáb 8h–14h</p>
-            </div>
+                <button
+                  onClick={pagarComCartao}
+                  disabled={pagando}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl shadow-md shadow-blue-500/25 transition-all duration-200 hover:-translate-y-0.5"
+                >
+                  {pagando
+                    ? <><Loader2 size={16} className="animate-spin" /> Redirecionando…</>
+                    : <><CreditCard size={16} /> Pagar agora</>
+                  }
+                </button>
+                <p className="text-xs text-zinc-400 mt-3 text-center">
+                  Você será redirecionado para o ambiente seguro do Stripe.
+                </p>
+              </>
+            ) : (
+              <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 rounded-xl p-4">
+                <CheckCircle2 size={20} className="text-green-500 shrink-0" />
+                <p className="text-sm font-semibold text-green-600 dark:text-green-400">
+                  Nenhuma mensalidade pendente. Tudo em dia!
+                </p>
+              </div>
+            )}
           </div>
         )}
       </section>
 
-      {/* ── Histórico de presença ── */}
-      <section>
-        <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest mb-3">Minha Presença</h3>
-
-        {/* Mini resumo */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          {[
-            { label: 'Presenças',    value: totalPresentes, cls: 'text-green-500',  bg: 'bg-green-500/10'  },
-            { label: 'Faltas',       value: totalFaltas,    cls: 'text-red-500',    bg: 'bg-red-500/10'    },
-            { label: 'Justificadas', value: totalJustific,  cls: 'text-orange-500', bg: 'bg-orange-500/10' },
-          ].map(c => (
-            <div key={c.label} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 text-center shadow-sm">
-              <p className={`text-2xl font-black ${c.cls}`}>{c.value}</p>
-              <p className="text-xs text-zinc-400 mt-0.5">{c.label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Lista */}
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
-          {minhasPresencas.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="text-sm text-zinc-400 italic">Nenhuma presença registrada ainda.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {minhasPresencas.map(p => (
-                <div key={p.id} className="flex items-center justify-between px-5 py-3.5">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Calendar size={13} className="text-zinc-400" />
-                    <span className="text-zinc-700 dark:text-zinc-300 font-medium">
-                      {formatarData(p.data)}
-                    </span>
-                    <span className="text-xs text-zinc-400">
-                      {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][new Date(p.data + 'T12:00:00').getDay()]}
-                    </span>
-                  </div>
-                  <StatusPresencaBadge status={p.status} />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
     </div>
   );
 }

@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, Eye, Dumbbell, Lock, ShieldOff } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, Eye, Dumbbell, Lock, ShieldOff, Camera, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
-import { alunosApi } from '../api';
+import { alunosApi, uploadsApi } from '../api';
 import AlunoDetalhe from './AlunoDetalhe';
+
+const API_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3000';
 
 function mascaraCPF(v) {
   return v.replace(/\D/g, '')
@@ -57,7 +59,7 @@ function StatusBadge({ status }) {
 }
 
 const FORM_VAZIO = {
-  nome: '', nascimento: '', cpf: '', telefone: '',
+  nome: '', nascimento: '', cpf: '', telefone: '', email: '',
   altura: '', peso: '', plano: 'Mensal', vencimento: '', fichaIds: [], professorId: '', senha: '',
 };
 
@@ -80,16 +82,21 @@ export default function Alunos({ alunos, setAlunos, fichas, professores = [] }) 
     setAlunoEditando(null);
     setForm(FORM_VAZIO);
     setErros({});
+    setFotoPreview(null);
+    setFotoArquivo(null);
     setExibindoForm(true);
   }
 
   function abrirEdicao(aluno) {
     setAlunoEditando(aluno);
+    setFotoPreview(aluno.fotoUrl ? `${API_BASE}${aluno.fotoUrl}` : null);
+    setFotoArquivo(null);
     setForm({
       nome:        aluno.nome,
       nascimento:  aluno.nascimento,
       cpf:         aluno.cpf,
       telefone:    aluno.telefone,
+      email:       aluno.email || '',
       altura:      aluno.altura,
       peso:        aluno.peso,
       plano:       aluno.plano,
@@ -107,6 +114,8 @@ export default function Alunos({ alunos, setAlunos, fichas, professores = [] }) 
     setAlunoEditando(null);
     setForm(FORM_VAZIO);
     setErros({});
+    setFotoPreview(null);
+    setFotoArquivo(null);
   }
 
   function validar() {
@@ -128,6 +137,22 @@ export default function Alunos({ alunos, setAlunos, fichas, professores = [] }) 
   }
 
   const [salvando, setSalvando] = useState(false);
+  const [fotoPreview, setFotoPreview] = useState(null);
+  const [fotoArquivo, setFotoArquivo] = useState(null);
+  const inputFotoRef = useRef(null);
+
+  function onSelecionarFoto(e) {
+    const arquivo = e.target.files[0];
+    if (!arquivo) return;
+    setFotoArquivo(arquivo);
+    setFotoPreview(URL.createObjectURL(arquivo));
+  }
+
+  function removerFoto() {
+    setFotoArquivo(null);
+    setFotoPreview(null);
+    if (inputFotoRef.current) inputFotoRef.current.value = '';
+  }
 
   async function salvarAluno(e) {
     e.preventDefault();
@@ -137,22 +162,30 @@ export default function Alunos({ alunos, setAlunos, fichas, professores = [] }) 
     }
     setSalvando(true);
     try {
+      let aluno;
       if (alunoEditando) {
-        const atualizado = await alunosApi.atualizar(alunoEditando.id, {
+        aluno = await alunosApi.atualizar(alunoEditando.id, {
           ...form,
           treinosSemana: alunoEditando.treinosSemana || { segunda: '', terca: '', quarta: '', quinta: '', sexta: '' },
         });
-        setAlunos(prev => prev.map(a => a.id === alunoEditando.id ? atualizado : a));
+        setAlunos(prev => prev.map(a => a.id === alunoEditando.id ? aluno : a));
         addToast('Aluno atualizado com sucesso!', 'success');
       } else {
-        const novo = await alunosApi.criar({
+        aluno = await alunosApi.criar({
           ...form,
           status: 'Ativo',
           treinosSemana: { segunda: '', terca: '', quarta: '', quinta: '', sexta: '' },
         });
-        setAlunos(prev => [...prev, novo]);
+        setAlunos(prev => [...prev, aluno]);
         addToast('Aluno cadastrado com sucesso!', 'success');
       }
+
+      // Envia a foto se o usuário selecionou uma
+      if (fotoArquivo && aluno?.id) {
+        const { fotoUrl } = await uploadsApi.enviarFoto(aluno.id, fotoArquivo);
+        setAlunos(prev => prev.map(a => a.id === aluno.id ? { ...a, fotoUrl } : a));
+      }
+
       fecharForm();
     } catch (err) {
       addToast(err.message || 'Erro ao salvar aluno.', 'error');
@@ -217,6 +250,38 @@ export default function Alunos({ alunos, setAlunos, fichas, professores = [] }) 
         </h2>
 
         <form onSubmit={salvarAluno} noValidate className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-7 space-y-7 shadow-sm">
+
+          {/* ── Foto do aluno ── */}
+          <section className="flex flex-col items-center gap-3">
+            <div className="relative">
+              <div className="w-24 h-24 rounded-full overflow-hidden bg-zinc-100 dark:bg-zinc-800 border-2 border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
+                {fotoPreview
+                  ? <img src={fotoPreview} alt="Foto" className="w-full h-full object-cover" />
+                  : <Camera size={32} className="text-zinc-400" />
+                }
+              </div>
+              {fotoPreview && (
+                <button
+                  type="button"
+                  onClick={removerFoto}
+                  className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 hover:bg-red-400 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            <input ref={inputFotoRef} type="file" accept="image/*" className="hidden" onChange={onSelecionarFoto} />
+            <button
+              type="button"
+              onClick={() => inputFotoRef.current?.click()}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
+            >
+              <Camera size={13} />
+              {fotoPreview ? 'Trocar foto' : 'Adicionar foto'}
+            </button>
+            <p className="text-xs text-zinc-400">JPG, PNG ou WEBP · máx. 5 MB</p>
+          </section>
+
           <section>
             <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">Dados Pessoais</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -257,6 +322,14 @@ export default function Alunos({ alunos, setAlunos, fichas, professores = [] }) 
                   maxLength={15}
                 />
                 <FieldError msg={erros.telefone} />
+              </div>
+              <div>
+                <label className={LBL}>Email</label>
+                <input
+                  type="email" value={form.email}
+                  onChange={e => set('email', e.target.value)}
+                  className={inputCls(false)} placeholder="aluno@email.com"
+                />
               </div>
             </div>
           </section>
@@ -434,6 +507,13 @@ export default function Alunos({ alunos, setAlunos, fichas, professores = [] }) 
             {alunosFiltrados.length > 0 ? alunosFiltrados.map(aluno => (
               <tr key={aluno.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors duration-150">
                 <td className="px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shrink-0 flex items-center justify-center">
+                      {aluno.fotoUrl
+                        ? <img src={`${API_BASE}${aluno.fotoUrl}`} alt={aluno.nome} className="w-full h-full object-cover" />
+                        : <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">{aluno.nome.slice(0,2).toUpperCase()}</span>
+                      }
+                    </div>
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-zinc-900 dark:text-white">{aluno.nome}</p>
                     {!aluno.temSenha && (
@@ -443,7 +523,8 @@ export default function Alunos({ alunos, setAlunos, fichas, professores = [] }) 
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-zinc-400 mt-0.5">{aluno.telefone}</p>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-0.5 ml-12">{aluno.telefone}</p>
                 </td>
                 <td className="px-5 py-4">
                   <p className="text-zinc-700 dark:text-zinc-300 font-medium">{aluno.peso} kg</p>

@@ -2,6 +2,29 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db');
 
+const MESES_POR_PLANO = { Mensal: 1, Trimestral: 3, Semestral: 6, Anual: 12 };
+
+async function criarProximaMensalidade(alunoId, plano, vencimentoAtual, valor) {
+  const meses = MESES_POR_PLANO[plano] ?? 1;
+  const proximo = new Date(vencimentoAtual + 'T12:00:00');
+  proximo.setMonth(proximo.getMonth() + meses);
+  const proximoStr = proximo.toISOString().slice(0, 10);
+
+  // Só cria se não existir mensalidade para este vencimento
+  const { rowCount } = await pool.query(
+    `SELECT 1 FROM mensalidades WHERE aluno_id = $1 AND vencimento = $2`,
+    [alunoId, proximoStr]
+  );
+  if (rowCount > 0) return;
+
+  await pool.query(
+    `INSERT INTO mensalidades (aluno_id, plano, valor, vencimento, status)
+     VALUES ($1, $2, $3, $4, 'Pendente')`,
+    [alunoId, plano, valor, proximoStr]
+  );
+  console.log(`[mensalidades] Próxima mensalidade criada: aluno ${alunoId} · venc. ${proximoStr}`);
+}
+
 function mapMensalidade(row) {
   return {
     id:            row.id,
@@ -25,6 +48,14 @@ const COM_NOME = `
 // GET — listar todas
 router.get('/', async (_req, res) => {
   try {
+    // Atualiza para "Atrasado" qualquer mensalidade Pendente com vencimento anterior a hoje
+    await pool.query(`
+      UPDATE mensalidades
+      SET status = 'Atrasado'
+      WHERE status = 'Pendente'
+        AND vencimento < CURRENT_DATE
+    `);
+
     const { rows } = await pool.query(`${COM_NOME} ORDER BY m.vencimento DESC`);
     res.json(rows.map(mapMensalidade));
   } catch (err) {
@@ -78,7 +109,19 @@ router.put('/:id', async (req, res) => {
        dataPagamento || null, status || 'Pendente', observacoes || null, id],
     );
     if (!rows.length) return res.status(404).json({ erro: 'Mensalidade não encontrada.' });
-    res.json(mapMensalidade(rows[0]));
+    const m = rows[0];
+
+    // Se acabou de ser marcada como Pago, gera a próxima mensalidade
+    if (status === 'Pago') {
+      await criarProximaMensalidade(
+        m.aluno_id,
+        m.plano,
+        new Date(m.vencimento).toISOString().slice(0, 10),
+        parseFloat(m.valor)
+      );
+    }
+
+    res.json(mapMensalidade(m));
   } catch (err) {
     console.error('[mensalidades]', err.message);
     res.status(500).json({ erro: 'Erro interno do servidor.' });
@@ -99,3 +142,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.criarProximaMensalidade = criarProximaMensalidade;

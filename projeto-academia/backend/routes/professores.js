@@ -1,7 +1,9 @@
 const express = require('express');
 const router  = express.Router();
 const bcrypt  = require('bcryptjs');
+const jwt     = require('jsonwebtoken');
 const pool    = require('../db');
+const { SECRET } = require('../middleware/auth');
 
 function mapProfessor(row) {
   return {
@@ -104,7 +106,8 @@ router.post('/login', async (req, res) => {
     if (!rows.length || !rows[0].senha_hash) return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
     const valido = await bcrypt.compare(senha, rows[0].senha_hash);
     if (!valido) return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
-    res.json(mapProfessor(rows[0]));
+    const token = jwt.sign({ id: rows[0].id, tipo: 'professor' }, SECRET, { expiresIn: '8h' });
+    res.json({ token, usuario: mapProfessor(rows[0]) });
   } catch (err) {
     console.error('[professores/login]', err.message);
     res.status(500).json({ erro: 'Erro interno do servidor.' });
