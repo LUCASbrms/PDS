@@ -46,7 +46,7 @@ function FieldError({ msg }) {
 
 const FORM_VAZIO = { nome: '', email: '', senha: '', confirmarSenha: '', telefone: '', cpf: '', nomeAcademia: '', chavePix: '' };
 
-export default function Configuracoes({ aoRegistrar }) {
+export default function Configuracoes({ aoRegistrar, onAtualizarDono }) {
   const { addToast } = useToast();
   const [form, setForm]             = useState(FORM_VAZIO);
   const [erros, setErros]           = useState({});
@@ -57,6 +57,7 @@ export default function Configuracoes({ aoRegistrar }) {
   const [salvoOk, setSalvoOk]       = useState(false);
   const [fotoPreview, setFotoPreview] = useState(null);
   const [fotoArquivo, setFotoArquivo] = useState(null);
+  const [fotoUrlAtual, setFotoUrlAtual] = useState(null);
   const inputFotoRef                  = useRef(null);
 
   useEffect(() => {
@@ -74,7 +75,7 @@ export default function Configuracoes({ aoRegistrar }) {
             nomeAcademia:  dono.nomeAcademia  || '',
             chavePix:      dono.chavePix      || '',
           });
-          if (dono.fotoUrl) setFotoPreview(`${API_BASE}${dono.fotoUrl}`);
+          if (dono.fotoUrl) { setFotoPreview(`${API_BASE}${dono.fotoUrl}`); setFotoUrlAtual(dono.fotoUrl); }
         }
       })
       .catch(() => {}) // nenhum dono cadastrado ainda
@@ -151,12 +152,16 @@ export default function Configuracoes({ aoRegistrar }) {
         aoRegistrar?.();
       }
 
+      let fotoUrlFinal = null;
       if (fotoArquivo && dono?.id) {
         const { fotoUrl } = await uploadsApi.enviarFotoDono(dono.id, fotoArquivo);
         setFotoPreview(`${API_BASE}${fotoUrl}`);
+        setFotoUrlAtual(fotoUrl);
         setFotoArquivo(null);
+        fotoUrlFinal = fotoUrl;
       }
 
+      onAtualizarDono?.({ nome: payload.nome, fotoUrl: fotoUrlFinal ?? fotoUrlAtual });
       setForm(prev => ({ ...prev, senha: '', confirmarSenha: '' }));
       setSalvoOk(true);
       setTimeout(() => setSalvoOk(false), 3000);

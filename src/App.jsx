@@ -2,11 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard, Users, Dumbbell, DollarSign, LogOut,
   Sun, Moon, Zap, CalendarCheck2, GraduationCap, Settings,
-  ChevronLeft, ChevronRight, Camera,
+  ChevronLeft, ChevronRight, Camera, Home,
 } from 'lucide-react';
 import { useTheme } from './context/ThemeContext';
 import { useToast } from './context/ToastContext';
-import { alunosApi, professoresApi, donoApi, fichasApi, mensalidadesApi, presencasApi, uploadsApi } from './api';
+import { alunosApi, professoresApi, donoApi, fichasApi, mensalidadesApi, presencasApi, uploadsApi, setToken } from './api';
 
 const API_SERVER = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace('/api', '');
 import Alunos       from './pages/Alunos';
@@ -17,6 +17,7 @@ import Presenca     from './pages/Presenca';
 import Professores  from './pages/Professores';
 import Configuracoes from './pages/Configuracoes';
 import Pagamento    from './pages/Pagamento';
+import AlunoHome    from './pages/AlunoHome';
 import Login        from './pages/Login';
 
 export default function App() {
@@ -36,7 +37,7 @@ export default function App() {
       const token = localStorage.getItem('gymbalance_token');
       if (!token) return 'painel';
       const u = JSON.parse(localStorage.getItem('gymbalance_usuario'));
-      return u?.tipo === 'aluno' ? 'treinos' : 'painel';
+      return u?.tipo === 'aluno' ? 'home' : 'painel';
     } catch { return 'painel'; }
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -114,8 +115,8 @@ export default function App() {
     const session = { tipo, dados };
     setUsuario(session);
     localStorage.setItem('gymbalance_usuario', JSON.stringify(session));
-    if (token) localStorage.setItem('gymbalance_token', token);
-    setTelaAtiva(tipo === 'aluno' ? 'treinos' : 'painel');
+    if (token) { localStorage.setItem('gymbalance_token', token); setToken(token); }
+    setTelaAtiva(tipo === 'aluno' ? 'home' : 'painel');
     addToast(`Bem-vindo ao GymBalance${dados?.nome ? `, ${dados.nome.split(' ')[0]}` : ''}!`, 'success');
   }
 
@@ -123,6 +124,8 @@ export default function App() {
     setUsuario(null);
     localStorage.removeItem('gymbalance_usuario');
     localStorage.removeItem('gymbalance_token');
+    sessionStorage.removeItem('gymbalance_token');
+    setToken(null);
     setTelaAtiva('painel');
   }
 
@@ -179,6 +182,7 @@ export default function App() {
 
   // ── Navegação por perfil ───────────────────────────────────────────────────
   const todosNavItems = [
+    { id: 'home',        label: 'Início',      icon: <Home size={17} />,            perfis: ['aluno'] },
     { id: 'painel',      label: 'Painel',      icon: <LayoutDashboard size={17} />, perfis: ['dono', 'professor'] },
     { id: 'alunos',      label: 'Alunos',      icon: <Users size={17} />,           perfis: ['dono', 'professor'] },
     { id: 'presenca',    label: 'Presença',    icon: <CalendarCheck2 size={17} />,  perfis: ['dono', 'professor'] },
@@ -288,8 +292,11 @@ export default function App() {
                   </div>
                 </button>
               ) : (
-                <div className="w-9 h-9 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-300 shrink-0">
-                  {(dadosUsuario?.nome || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()}
+                <div className="w-9 h-9 rounded-full shrink-0 overflow-hidden bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-300">
+                  {dadosUsuario?.fotoUrl
+                    ? <img src={`${API_SERVER}${dadosUsuario.fotoUrl}`} alt={dadosUsuario.nome} className="w-full h-full object-cover" />
+                    : (dadosUsuario?.nome || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
+                  }
                 </div>
               )}
               <div className="overflow-hidden">
@@ -306,6 +313,11 @@ export default function App() {
               className="hidden"
               onChange={handleFotoAluno}
             />
+          )}
+          {sidebarCollapsed && tipoUsuario !== 'aluno' && dadosUsuario?.fotoUrl && (
+            <div className="w-10 h-10 mx-auto rounded-full overflow-hidden shrink-0">
+              <img src={`${API_SERVER}${dadosUsuario.fotoUrl}`} alt={dadosUsuario.nome} className="w-full h-full object-cover" />
+            </div>
           )}
           {sidebarCollapsed && tipoUsuario === 'aluno' && (
             <button
@@ -428,12 +440,11 @@ export default function App() {
 
             const fichasVisiveis = tipoUsuario === 'aluno'
               ? fichas.filter(f => (dadosUsuario.fichaIds || []).includes(String(f.id)))
-              : tipoUsuario === 'professor'
-              ? fichas.filter(f => f.professorId === dadosUsuario.id)
-              : fichas;
+              : fichas; // dono e professor veem todas as fichas
 
             return (
               <>
+                {telaAtiva === 'home'          && <AlunoHome aluno={dadosUsuario} fichas={fichasVisiveis} mensalidades={mensalidades} setTelaAtiva={setTelaAtiva} />}
                 {telaAtiva === 'painel'        && <Painel setTelaAtiva={setTelaAtiva} alunos={alunosVisiveis} mensalidades={mensalidades} presencas={presencas} professores={professores} perfil={tipoUsuario} />}
                 {telaAtiva === 'alunos'        && <Alunos alunos={alunosVisiveis} setAlunos={setAlunos} fichas={fichasVisiveis} professores={professores} />}
                 {telaAtiva === 'presenca'      && <Presenca alunos={alunosVisiveis} presencas={presencas} setPresencas={setPresencas} />}
@@ -441,7 +452,12 @@ export default function App() {
                 {telaAtiva === 'treinos'       && <Treinos fichas={fichasVisiveis} setFichas={setFichas} somenteLeitura={tipoUsuario === 'aluno'} />}
                 {telaAtiva === 'financeiro'    && <Financeiro mensalidades={mensalidades} setMensalidades={setMensalidades} alunos={alunos} />}
                 {telaAtiva === 'pagamento'     && <Pagamento aluno={dadosUsuario} mensalidades={mensalidades} />}
-                {telaAtiva === 'configuracoes' && <Configuracoes />}
+                {telaAtiva === 'configuracoes' && <Configuracoes onAtualizarDono={({ nome, fotoUrl }) => {
+                  const novosDados = { ...usuario.dados, ...(nome && { nome }), ...(fotoUrl && { fotoUrl }) };
+                  const novaSession = { tipo: usuario.tipo, dados: novosDados };
+                  setUsuario(novaSession);
+                  localStorage.setItem('gymbalance_usuario', JSON.stringify(novaSession));
+                }} />}
               </>
             );
             })()}
