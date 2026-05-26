@@ -4,6 +4,7 @@ const multer  = require('multer');
 const path    = require('path');
 const fs      = require('fs');
 const pool    = require('../db');
+const { exigir } = require('../middleware/auth');
 
 const UPLOADS_DIR = path.join(__dirname, '../uploads');
 
@@ -50,18 +51,41 @@ async function salvarFoto(req, res, tabela, idParam) {
 }
 
 // POST /api/uploads/foto/:alunoId
-router.post('/foto/:alunoId', criarUpload('aluno').single('foto'), (req, res) =>
-  salvarFoto(req, res, 'alunos', 'alunoId')
+// dono e professor podem atualizar qualquer aluno; aluno só atualiza a própria foto
+router.post(
+  '/foto/:alunoId',
+  exigir('dono', 'professor', 'aluno'),
+  (req, res, next) => {
+    if (req.usuario.tipo === 'aluno' && String(req.usuario.id) !== String(req.params.alunoId)) {
+      return res.status(403).json({ erro: 'Você só pode alterar a própria foto.' });
+    }
+    next();
+  },
+  criarUpload('aluno').single('foto'),
+  (req, res) => salvarFoto(req, res, 'alunos', 'alunoId'),
 );
 
 // POST /api/uploads/professor/:professorId
-router.post('/professor/:professorId', criarUpload('professor').single('foto'), (req, res) =>
-  salvarFoto(req, res, 'professores', 'professorId')
+// dono pode atualizar qualquer professor; professor só atualiza a própria foto
+router.post(
+  '/professor/:professorId',
+  exigir('dono', 'professor'),
+  (req, res, next) => {
+    if (req.usuario.tipo === 'professor' && String(req.usuario.id) !== String(req.params.professorId)) {
+      return res.status(403).json({ erro: 'Você só pode alterar a própria foto.' });
+    }
+    next();
+  },
+  criarUpload('professor').single('foto'),
+  (req, res) => salvarFoto(req, res, 'professores', 'professorId'),
 );
 
-// POST /api/uploads/dono/:donoId
-router.post('/dono/:donoId', criarUpload('dono').single('foto'), (req, res) =>
-  salvarFoto(req, res, 'donos', 'donoId')
+// POST /api/uploads/dono/:donoId (somente dono)
+router.post(
+  '/dono/:donoId',
+  exigir('dono'),
+  criarUpload('dono').single('foto'),
+  (req, res) => salvarFoto(req, res, 'donos', 'donoId'),
 );
 
 module.exports = router;

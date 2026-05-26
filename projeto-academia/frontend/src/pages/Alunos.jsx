@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import Paginacao from '../components/Paginacao';
 import { Search, Trash2, ArrowLeft, UserPlus, Pencil, AlertCircle, Eye, Dumbbell, Lock, ShieldOff, Camera, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { alunosApi, uploadsApi } from '../api';
@@ -68,8 +69,12 @@ export default function Alunos({ alunos, setAlunos, fichas, professores = [] }) 
   const [exibindoForm, setExibindoForm] = useState(false);
   const [alunoEditando, setAlunoEditando] = useState(null);
   const [alunoVisualizandoId, setAlunoVisualizandoId] = useState(null);
-  const [busca, setBusca] = useState('');
-  const [erros, setErros] = useState({});
+  const [busca, setBusca]   = useState('');
+  const [erros, setErros]   = useState({});
+  const [pagina, setPagina] = useState(1);
+  const POR_PAGINA = 10;
+
+  useEffect(() => { setPagina(1); }, [busca]);
 
   const [form, setForm] = useState(FORM_VAZIO);
 
@@ -219,6 +224,7 @@ export default function Alunos({ alunos, setAlunos, fichas, professores = [] }) 
   const alunosFiltrados = alunos.filter(a =>
     a.nome.toLowerCase().includes(busca.toLowerCase())
   );
+  const alunosPaginados = alunosFiltrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
   if (alunoVisualizandoId) {
     const alunoAtual = alunos.find(a => a.id === alunoVisualizandoId);
@@ -504,7 +510,7 @@ export default function Alunos({ alunos, setAlunos, fichas, professores = [] }) 
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {alunosFiltrados.length > 0 ? alunosFiltrados.map(aluno => (
+            {alunosFiltrados.length > 0 ? alunosPaginados.map(aluno => (
               <tr key={aluno.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors duration-150">
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-3">
@@ -587,6 +593,13 @@ export default function Alunos({ alunos, setAlunos, fichas, professores = [] }) 
         </table>
         </div>
       </div>
+
+      <Paginacao
+        pagina={pagina}
+        totalItens={alunosFiltrados.length}
+        porPagina={POR_PAGINA}
+        onChange={setPagina}
+      />
     </div>
   );
 }

@@ -17,4 +17,16 @@ function autenticar(req, res, next) {
   }
 }
 
-module.exports = { autenticar, SECRET };
+// Middleware de autorização por tipo de usuário
+// Uso: exigir('dono', 'professor')
+function exigir(...tipos) {
+  return (req, res, next) => {
+    if (!tipos.includes(req.usuario?.tipo)) {
+      console.warn(`[auth] Acesso negado — tipo="${req.usuario?.tipo}" não está em [${tipos.join(', ')}] | rota: ${req.method} ${req.originalUrl}`);
+      return res.status(403).json({ erro: 'Acesso não autorizado.' });
+    }
+    next();
+  };
+}
+
+module.exports = { autenticar, exigir, SECRET };

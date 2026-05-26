@@ -1,4 +1,12 @@
+import { useMemo } from 'react';
 import { Users, Zap, TrendingUp, AlertTriangle, UserPlus, CreditCard, ArrowRight, CalendarCheck2, GraduationCap, AlertCircle } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
+  PieChart, Pie, Cell,
+} from 'recharts';
+
+const MESES_ABREV = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
 function formatarData(str) {
   if (!str) return '—';
@@ -7,6 +15,7 @@ function formatarData(str) {
 }
 
 export default function Painel({ setTelaAtiva, alunos, mensalidades, presencas, professores, perfil = 'dono' }) {
+  const { isDark } = useTheme();
   const hoje              = new Date().toISOString().slice(0, 10);
   const totalAlunos       = alunos.length;
   const alunosAtivos      = alunos.filter(a => a.status === 'Ativo').length;
@@ -31,6 +40,32 @@ export default function Painel({ setTelaAtiva, alunos, mensalidades, presencas, 
     .filter(Boolean)
     .sort((a, b) => b.diasAtraso - a.diasAtraso)
   : [];
+
+  // ── Dados para gráficos ───────────────────────────────────────────────────
+  const receitaChart = useMemo(() => {
+    const agora = new Date();
+    return Array.from({ length: 6 }, (_, i) => {
+      const d     = new Date(agora.getFullYear(), agora.getMonth() - (5 - i), 1);
+      const chave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const doMes = mensalidades.filter(m => m.vencimento?.startsWith(chave));
+      return {
+        mes:          MESES_ABREV[d.getMonth()],
+        Pago:         +doMes.filter(m => m.status === 'Pago').reduce((s, m) => s + m.valor, 0).toFixed(2),
+        'Em aberto':  +doMes.filter(m => m.status !== 'Pago').reduce((s, m) => s + m.valor, 0).toFixed(2),
+      };
+    });
+  }, [mensalidades]);
+
+  const distribuicaoStatus = useMemo(() => [
+    { name: 'Pago',     value: mensalidades.filter(m => m.status === 'Pago').length,     cor: '#22c55e' },
+    { name: 'Pendente', value: mensalidades.filter(m => m.status === 'Pendente').length, cor: '#f97316' },
+    { name: 'Atrasado', value: mensalidades.filter(m => m.status === 'Atrasado').length, cor: '#ef4444' },
+  ].filter(d => d.value > 0), [mensalidades]);
+
+  const tickStyle   = { fill: isDark ? '#a1a1aa' : '#71717a', fontSize: 11 };
+  const gridColor   = isDark ? '#27272a' : '#f4f4f5';
+  const tooltipBox  = { background: isDark ? '#18181b' : '#fff', border: `1px solid ${isDark ? '#3f3f46' : '#e4e4e7'}`, borderRadius: 10, fontSize: 12 };
+  const tooltipLbl  = { color: isDark ? '#e4e4e7' : '#18181b', fontWeight: 700 };
 
   const todosCards = [
     {
@@ -156,6 +191,90 @@ export default function Painel({ setTelaAtiva, alunos, mensalidades, presencas, 
           ))}
         </div>
       </div>
+
+      {/* ── Gráficos (só dono) ── */}
+      {perfil === 'dono' && mensalidades.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+          {/* Bar chart — evolução 6 meses */}
+          <div className="lg:col-span-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm">
+            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-0.5">Evolução</p>
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-white mb-5">Receita dos Últimos 6 Meses</h3>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={receitaChart} barGap={3} barCategoryGap="30%">
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                <XAxis dataKey="mes" tick={tickStyle} axisLine={false} tickLine={false} />
+                <YAxis
+                  tick={tickStyle}
+                  axisLine={false}
+                  tickLine={false}
+                  width={46}
+                  tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
+                />
+                <Tooltip
+                  formatter={(v, name) => [`R$ ${Number(v).toFixed(2)}`, name]}
+                  contentStyle={tooltipBox}
+                  labelStyle={tooltipLbl}
+                  cursor={{ fill: isDark ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.04)' }}
+                />
+                <Bar dataKey="Pago"        fill="#22c55e" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                <Bar dataKey="Em aberto"   fill="#f97316" radius={[4, 4, 0, 0]} maxBarSize={28} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="flex items-center gap-4 mt-3 justify-end">
+              {[['#22c55e', 'Pago'], ['#f97316', 'Em aberto']].map(([cor, label]) => (
+                <div key={label} className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: cor }} />
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Pie chart — distribuição de status */}
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm">
+            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-0.5">Distribuição</p>
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-white mb-4">Status das Mensalidades</h3>
+            {distribuicaoStatus.length > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height={160}>
+                  <PieChart>
+                    <Pie
+                      data={distribuicaoStatus}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={48}
+                      outerRadius={72}
+                      paddingAngle={3}
+                      dataKey="value"
+                      strokeWidth={0}
+                    >
+                      {distribuicaoStatus.map(d => <Cell key={d.name} fill={d.cor} />)}
+                    </Pie>
+                    <Tooltip
+                      formatter={(v, name) => [v, name]}
+                      contentStyle={tooltipBox}
+                      labelStyle={tooltipLbl}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex flex-col gap-2 mt-2">
+                  {distribuicaoStatus.map(d => (
+                    <div key={d.name} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0" style={{ background: d.cor }} />
+                        <span className="text-zinc-600 dark:text-zinc-400">{d.name}</span>
+                      </div>
+                      <span className="font-bold text-zinc-900 dark:text-white">{d.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-center h-40 text-zinc-400 text-sm">Sem dados</div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Inadimplentes (só dono) ── */}
       {inadimplentesLista.length > 0 && (

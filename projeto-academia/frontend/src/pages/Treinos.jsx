@@ -85,7 +85,8 @@ export default function Treinos({ fichas, setFichas, somenteLeitura = false }) {
   const [exsLocais, setExsLocais]         = useState([]);
 
   /* ── Wizard ── */
-  const [etapa, setEtapa] = useState(1);
+  const [etapa, setEtapa]       = useState(1);
+  const [abaStep2, setAbaStep2] = useState('catalogo'); // mobile: 'catalogo' | 'ficha'
 
   /* ── Catálogo ── */
   const [buscaEx, setBuscaEx]     = useState('');
@@ -107,6 +108,7 @@ export default function Treinos({ fichas, setFichas, somenteLeitura = false }) {
   /* ────────────────────────────── helpers de reset ── */
   function resetModal() {
     setEtapa(1);
+    setAbaStep2('catalogo');
     setBuscaEx('');
     setFiltroTab('todos');
     setExExpandido(null);
@@ -368,8 +370,8 @@ export default function Treinos({ fichas, setFichas, somenteLeitura = false }) {
         {etapa === 1 && (
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 animate-fade-up">
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 sm:col-span-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
                 <label className={LBL}>Nome da Ficha</label>
                 <input
                   type="text" maxLength={60} value={form.nome} autoFocus
@@ -442,10 +444,31 @@ export default function Treinos({ fichas, setFichas, somenteLeitura = false }) {
 
         {/* ══════════════ STEP 2 — Exercícios ══════════════ */}
         {etapa === 2 && (
-          <div className="flex-1 overflow-hidden flex animate-fade-up">
+          <div className="flex-1 overflow-hidden flex flex-col animate-fade-up">
+
+            {/* Tabs mobile: visíveis apenas em telas pequenas */}
+            <div className="sm:hidden shrink-0 flex border-b border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setAbaStep2('catalogo')}
+                className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${abaStep2 === 'catalogo' ? 'text-green-600 dark:text-green-400 border-b-2 border-green-500' : 'text-zinc-400'}`}
+              >
+                Catálogo
+              </button>
+              <button
+                type="button"
+                onClick={() => setAbaStep2('ficha')}
+                className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${abaStep2 === 'ficha' ? 'text-green-600 dark:text-green-400 border-b-2 border-green-500' : 'text-zinc-400'}`}
+              >
+                Ficha {exsLocais.length > 0 && `(${exsLocais.length})`}
+              </button>
+            </div>
+
+            {/* Painéis: empilhados em mobile (tab controla visibilidade), lado a lado em sm+ */}
+            <div className="flex-1 overflow-hidden flex">
 
             {/* ─── Painel esquerdo: Catálogo ─── */}
-            <div className="w-[44%] shrink-0 border-r border-zinc-100 dark:border-zinc-800 flex flex-col overflow-hidden">
+            <div className={`w-full sm:w-[44%] shrink-0 sm:border-r border-zinc-100 dark:border-zinc-800 flex-col overflow-hidden ${abaStep2 === 'catalogo' ? 'flex' : 'hidden sm:flex'}`}>
 
               {/* Cabeçalho do catálogo */}
               <div className="px-4 pt-4 pb-3 space-y-2.5">
@@ -588,7 +611,7 @@ export default function Treinos({ fichas, setFichas, somenteLeitura = false }) {
             </div>
 
             {/* ─── Painel direito: Exercícios da ficha ─── */}
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className={`flex-1 flex-col overflow-hidden ${abaStep2 === 'ficha' ? 'flex' : 'hidden sm:flex'}`}>
               <div className="px-4 pt-4 pb-3 flex items-center justify-between shrink-0">
                 <p className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">
                   Ficha
@@ -751,6 +774,7 @@ export default function Treinos({ fichas, setFichas, somenteLeitura = false }) {
                 ))}
               </div>
             </div>
+            </div>{/* fim container painéis */}
           </div>
         )}
 

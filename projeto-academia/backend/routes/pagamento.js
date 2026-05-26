@@ -1,54 +1,18 @@
 const express      = require('express');
 const router       = express.Router();
 const Stripe       = require('stripe');
-const nodemailer   = require('nodemailer');
 const pool         = require('../db');
 const { criarProximaMensalidade } = require('./mensalidades');
+const { enviarEmailPagamentoConfirmado } = require('../utils/email');
+const { exigir } = require('../middleware/auth');
 
 const stripe       = Stripe(process.env.STRIPE_SECRET_KEY);
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
 
-async function enviarEmailPagamento({ nomeAluno, emailAluno, plano, valor, dataPagamento }) {
-  console.log('[email] EMAIL_USER:', process.env.EMAIL_USER || '(vazio)');
-  console.log('[email] EMAIL_PASS:', process.env.EMAIL_PASS ? '(preenchido)' : '(vazio)');
-  console.log('[email] Destinatário:', emailAluno || '(vazio)');
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS || !emailAluno) {
-    console.log('[email] Envio cancelado — credencial ou email do aluno ausente.');
-    return;
-  }
-  console.log('[email] Enviando para:', emailAluno);
-  await transporter.sendMail({
-    from: `"GymBalance" <${process.env.EMAIL_USER}>`,
-    to: emailAluno,
-    subject: 'Pagamento confirmado — GymBalance',
-    html: `
-      <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px;background:#f9fafb;border-radius:12px">
-        <h2 style="color:#22c55e;margin-bottom:4px">Pagamento confirmado!</h2>
-        <p style="color:#71717a;margin-top:0">Olá, <strong style="color:#18181b">${nomeAluno}</strong>!</p>
-        <div style="background:#fff;border:1px solid #e4e4e7;border-radius:10px;padding:20px;margin:20px 0">
-          <p style="margin:0 0 8px;color:#71717a;font-size:13px">DETALHES DO PAGAMENTO</p>
-          <p style="margin:6px 0"><strong>Plano:</strong> ${plano}</p>
-          <p style="margin:6px 0"><strong>Valor:</strong> R$ ${Number(valor).toFixed(2)}</p>
-          <p style="margin:6px 0"><strong>Data:</strong> ${new Date(dataPagamento + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
-          <p style="margin:6px 0"><strong>Status:</strong> <span style="color:#22c55e;font-weight:bold">Pago</span></p>
-        </div>
-        <p style="color:#71717a;font-size:13px">Obrigado por estar com a gente. Bons treinos!</p>
-      </div>
-    `,
-  });
-}
-
-// POST /api/pagamento/criar-sessao
+// POST /api/pagamento/criar-sessao (todos os tipos autenticados)
 // Cria uma Stripe Checkout Session para uma mensalidade específica
-router.post('/criar-sessao', async (req, res) => {
+router.post('/criar-sessao', exigir('dono', 'professor', 'aluno'), async (req, res) => {
   const { mensalidadeId } = req.body;
   if (!mensalidadeId) return res.status(400).json({ erro: 'mensalidadeId é obrigatório.' });
 
@@ -143,12 +107,12 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
             parseFloat(m.valor)
           );
           try {
-            await enviarEmailPagamento({
+            await enviarEmailPagamentoConfirmado({
               nomeAluno:     m.aluno_nome,
               emailAluno:    m.aluno_email,
               plano:         m.plano,
               valor:         m.valor,
-              dataPagamento: m.data_pagamento,
+              dataPagamento: new Date(m.data_pagamento).toISOString().slice(0, 10),
             });
             console.log('[email] Enviado com sucesso!');
           } catch (emailErr) {

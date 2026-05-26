@@ -1,10 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import Paginacao from '../components/Paginacao';
 import {
   Search, Calendar, CheckCircle2, XCircle, Clock,
-  Users, ClipboardCheck, RotateCcw,
+  Users, ClipboardCheck, RotateCcw, ChevronLeft, ChevronRight, X, CalendarDays,
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { presencasApi } from '../api';
+
+const API_SERVER = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace('/api', '');
 
 function initials(nome) {
   const parts = nome.trim().split(' ').filter(Boolean);
@@ -33,12 +36,158 @@ const STATUS_CFG = {
   },
 };
 
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+function ModalHistorico({ aluno, presencas, onFechar }) {
+  const agora = new Date();
+  const [mes, setMes] = useState(agora.getMonth() + 1); // 1-12
+  const [ano, setAno] = useState(agora.getFullYear());
+
+  function navegar(delta) {
+    let novoMes = mes + delta;
+    let novoAno = ano;
+    if (novoMes < 1)  { novoMes = 12; novoAno--; }
+    if (novoMes > 12) { novoMes = 1;  novoAno++; }
+    setMes(novoMes);
+    setAno(novoAno);
+  }
+
+  // filtra do array já carregado — sem nova chamada à API
+  const prefixo   = `${ano}-${String(mes).padStart(2, '0')}-`;
+  const registros = presencas.filter(p => p.alunoId === aluno.id && p.data.startsWith(prefixo));
+
+  // mapa dia -> status (string comparison, sem timezone issues)
+  const mapaDias = {};
+  registros.forEach(r => {
+    mapaDias[parseInt(r.data.slice(8, 10), 10)] = r.status;
+  });
+
+  const diasNoMes    = new Date(ano, mes, 0).getDate();
+  const offsetInicio = new Date(ano, mes - 1, 1).getDay(); // 0=Dom
+
+  const presentes    = registros.filter(r => r.status === 'Presente').length;
+  const faltas       = registros.filter(r => r.status === 'Falta').length;
+  const justificadas = registros.filter(r => r.status === 'Justificada').length;
+  const totalReg     = presentes + faltas + justificadas;
+  const taxa         = totalReg > 0 ? Math.round((presentes / totalReg) * 100) : null;
+
+  const diaCls = (status) => {
+    if (status === 'Presente')    return 'bg-green-500 text-white font-bold';
+    if (status === 'Falta')       return 'bg-red-500 text-white font-bold';
+    if (status === 'Justificada') return 'bg-orange-400 text-white font-bold';
+    return 'text-zinc-400 dark:text-zinc-600';
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full max-w-md rounded-2xl shadow-2xl animate-scale-in">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-zinc-100 dark:border-zinc-800">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full overflow-hidden shrink-0">
+              {aluno.fotoUrl ? (
+                <img src={`${API_SERVER}${aluno.fotoUrl}`} alt={aluno.nome} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-300">
+                  {initials(aluno.nome)}
+                </div>
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-bold text-zinc-900 dark:text-white leading-none">{aluno.nome}</p>
+              <p className="text-xs text-zinc-400 mt-0.5">Histórico de Presença</p>
+            </div>
+          </div>
+          <button onClick={onFechar} className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Navegação de mês */}
+        <div className="flex items-center justify-between px-6 py-4">
+          <button onClick={() => navegar(-1)} className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200">
+            <ChevronLeft size={16} />
+          </button>
+          <span className="text-sm font-bold text-zinc-900 dark:text-white">{MESES[mes - 1]} {ano}</span>
+          <button onClick={() => navegar(+1)} className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200">
+            <ChevronRight size={16} />
+          </button>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-2 px-6 mb-5">
+          {[
+            { label: 'Presentes',    value: presentes,    cls: 'text-green-600 dark:text-green-400' },
+            { label: 'Faltas',       value: faltas,       cls: 'text-red-600 dark:text-red-400' },
+            { label: 'Justificadas', value: justificadas, cls: 'text-orange-500 dark:text-orange-400' },
+            { label: 'Taxa',         value: taxa !== null ? `${taxa}%` : '—', cls: 'text-zinc-700 dark:text-zinc-200' },
+          ].map(s => (
+            <div key={s.label} className="bg-zinc-50 dark:bg-zinc-800 rounded-xl p-3 text-center">
+              <p className={`text-lg font-black leading-none ${s.cls}`}>{s.value}</p>
+              <p className="text-[10px] text-zinc-400 mt-1 leading-tight">{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Calendário */}
+        <div className="px-6 pb-6">
+          {/* Cabeçalho dias da semana */}
+          <div className="grid grid-cols-7 mb-1">
+            {DIAS_SEMANA.map(d => (
+              <div key={d} className="text-center text-[10px] font-semibold text-zinc-400 py-1">{d}</div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-1">
+            {/* Células de offset */}
+            {Array.from({ length: offsetInicio }).map((_, i) => <div key={`off-${i}`} />)}
+            {/* Dias do mês */}
+            {Array.from({ length: diasNoMes }, (_, i) => i + 1).map(dia => {
+              const status = mapaDias[dia];
+              return (
+                <div
+                  key={dia}
+                  title={status || 'Sem registro'}
+                  className={`aspect-square flex items-center justify-center rounded-lg text-xs transition-all duration-200 ${diaCls(status)}`}
+                >
+                  {dia}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Legenda */}
+          <div className="flex items-center gap-4 mt-4 justify-center">
+            {[
+              { cor: 'bg-green-500',  label: 'Presente' },
+              { cor: 'bg-red-500',    label: 'Falta' },
+              { cor: 'bg-orange-400', label: 'Justificada' },
+            ].map(l => (
+              <div key={l.label} className="flex items-center gap-1.5">
+                <span className={`w-2.5 h-2.5 rounded-full ${l.cor}`} />
+                <span className="text-[11px] text-zinc-500 dark:text-zinc-400">{l.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Presenca({ alunos, presencas, setPresencas }) {
   const { addToast } = useToast();
   const hoje = new Date().toISOString().slice(0, 10);
   const [data, setData] = useState(hoje);
   const [busca, setBusca] = useState('');
-  const [filtro, setFiltro] = useState('todos');
+  const [filtro, setFiltro]         = useState('todos');
+  const [alunoHistorico, setAlunoHistorico] = useState(null);
+  const [pagina, setPagina]         = useState(1);
+  const POR_PAGINA = 15;
+
+  useEffect(() => { setPagina(1); }, [busca, filtro, data]);
 
   function mudarData(novaData) {
     setData(novaData);
@@ -107,6 +256,8 @@ export default function Presenca({ alunos, presencas, setPresencas }) {
       return s === filtro;
     });
   }, [alunos, busca, filtro, presencas, data]);
+
+  const alunosPaginados = alunosFiltrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
   const nomeDia      = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][new Date(data + 'T12:00:00').getDay()];
   const isHoje       = data === hoje;
@@ -241,7 +392,7 @@ export default function Presenca({ alunos, presencas, setPresencas }) {
           </div>
         ) : (
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {alunosFiltrados.map(aluno => {
+            {alunosPaginados.map(aluno => {
               const status = getStatus(aluno.id);
               const cfg    = status ? STATUS_CFG[status] : null;
 
@@ -253,24 +404,46 @@ export default function Presenca({ alunos, presencas, setPresencas }) {
                   }`}
                 >
                   {/* Avatar */}
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 select-none transition-all duration-300 ${
-                      cfg
-                        ? cfg.avatarCls
-                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
-                    }`}
-                  >
-                    {initials(aluno.nome)}
+                  <div className="w-10 h-10 rounded-full shrink-0 select-none overflow-hidden transition-all duration-300">
+                    {aluno.fotoUrl ? (
+                      <img
+                        src={`${API_SERVER}${aluno.fotoUrl}`}
+                        alt={aluno.nome}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div
+                        className={`w-full h-full flex items-center justify-center text-sm font-bold ${
+                          cfg
+                            ? cfg.avatarCls
+                            : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
+                        }`}
+                      >
+                        {initials(aluno.nome)}
+                      </div>
+                    )}
                   </div>
 
                   {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-zinc-900 dark:text-white text-sm truncate">{aluno.nome}</p>
+                  <button
+                    onClick={() => setAlunoHistorico(aluno)}
+                    className="flex-1 min-w-0 text-left group"
+                  >
+                    <p className="font-semibold text-zinc-900 dark:text-white text-sm truncate group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors">
+                      {aluno.nome}
+                    </p>
                     <p className="text-xs text-zinc-400 mt-0.5">{aluno.plano} · {aluno.telefone}</p>
-                  </div>
+                  </button>
 
                   {/* Action area */}
                   <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => setAlunoHistorico(aluno)}
+                      title="Ver histórico"
+                      className="p-1.5 rounded-lg text-zinc-300 dark:text-zinc-600 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-500/10 transition-all duration-200"
+                    >
+                      <CalendarDays size={14} />
+                    </button>
                     {status ? (
                       <>
                         <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border animate-check-pop ${cfg.badgeCls}`}>
@@ -317,6 +490,18 @@ export default function Presenca({ alunos, presencas, setPresencas }) {
           </div>
         )}
       </div>
+
+      <Paginacao
+        pagina={pagina}
+        totalItens={alunosFiltrados.length}
+        porPagina={POR_PAGINA}
+        onChange={setPagina}
+      />
+
+      {/* Modal histórico */}
+      {alunoHistorico && (
+        <ModalHistorico aluno={alunoHistorico} presencas={presencas} onFechar={() => setAlunoHistorico(null)} />
+      )}
     </div>
   );
 }

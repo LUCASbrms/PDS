@@ -14,6 +14,7 @@ const presencasRouter     = require('./routes/presencas');
 const pagamentoRouter     = require('./routes/pagamento');
 const uploadsRouter       = require('./routes/uploads');
 const { autenticar }      = require('./middleware/auth');
+const { iniciarCronNotificacoes } = require('./utils/notificacoes');
 
 const app = express();
 
@@ -96,10 +97,18 @@ async function iniciar() {
     process.exit(1);
   }
 
+  iniciarCronNotificacoes();
+
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     console.log(`\n🚀 Servidor rodando em http://localhost:${PORT}\n`);
   });
 }
 
-iniciar();
+// Exporta o app para testes (sem iniciar o servidor)
+module.exports = app;
+
+// Inicia o servidor apenas quando executado diretamente
+if (require.main === module) {
+  iniciar();
+}

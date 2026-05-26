@@ -3,7 +3,7 @@ const router  = express.Router();
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
 const pool    = require('../db');
-const { SECRET } = require('../middleware/auth');
+const { SECRET, exigir } = require('../middleware/auth');
 
 function mapProfessor(row) {
   return {
@@ -28,8 +28,8 @@ function handleDBError(err, res) {
   res.status(500).json({ erro: 'Erro interno do servidor.' });
 }
 
-// GET — listar todos
-router.get('/', async (_req, res) => {
+// GET — listar todos (todos os tipos)
+router.get('/', exigir('dono', 'professor', 'aluno'), async (_req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM professores ORDER BY nome');
     res.json(rows.map(mapProfessor));
@@ -38,8 +38,8 @@ router.get('/', async (_req, res) => {
   }
 });
 
-// POST — criar
-router.post('/', async (req, res) => {
+// POST — criar (somente dono)
+router.post('/', exigir('dono'), async (req, res) => {
   const { nome, email, telefone, cpf, especialidade, status, senha } = req.body;
   if (!nome?.trim()) return res.status(400).json({ erro: 'Nome é obrigatório.' });
   try {
@@ -63,8 +63,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT — atualizar
-router.put('/:id', async (req, res) => {
+// PUT — atualizar (somente dono)
+router.put('/:id', exigir('dono'), async (req, res) => {
   const { id } = req.params;
   const { nome, email, telefone, cpf, especialidade, status, senha } = req.body;
   if (!nome?.trim()) return res.status(400).json({ erro: 'Nome é obrigatório.' });
@@ -86,8 +86,8 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE — excluir
-router.delete('/:id', async (req, res) => {
+// DELETE — excluir (somente dono)
+router.delete('/:id', exigir('dono'), async (req, res) => {
   const { id } = req.params;
   try {
     const { rowCount } = await pool.query('DELETE FROM professores WHERE id=$1', [id]);

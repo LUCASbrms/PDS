@@ -3,7 +3,8 @@ const router  = express.Router();
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
 const pool    = require('../db');
-const { SECRET } = require('../middleware/auth');
+const { SECRET, exigir } = require('../middleware/auth');
+const { enviarEmailFichaAtribuida } = require('../utils/email');
 
 const PRECOS_PLANOS = { Mensal: 130, Trimestral: 330, Semestral: 600, Anual: 1200 };
 
@@ -61,8 +62,8 @@ function handleDBError(err, res) {
   res.status(500).json({ erro: 'Erro interno do servidor.' });
 }
 
-// GET — listar todos
-router.get('/', async (_req, res) => {
+// GET — listar todos (dono, professor e aluno)
+router.get('/', exigir('dono', 'professor', 'aluno'), async (_req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM alunos ORDER BY nome');
     res.json(rows.map(mapAluno));
@@ -71,8 +72,8 @@ router.get('/', async (_req, res) => {
   }
 });
 
-// POST — criar
-router.post('/', async (req, res) => {
+// POST — criar (somente dono e professor)
+router.post('/', exigir('dono', 'professor'), async (req, res) => {
   const { nome, nascimento, cpf, telefone, email, altura, peso, plano, vencimento, status, fichaIds, professorId, treinosSemana, senha } = req.body;
   if (!nome?.trim()) return res.status(400).json({ erro: 'Nome é obrigatório.' });
   try {
@@ -108,14 +109,21 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT — atualizar
-router.put('/:id', async (req, res) => {
+// PUT — atualizar (somente dono e professor)
+router.put('/:id', exigir('dono', 'professor'), async (req, res) => {
   const { id } = req.params;
   const { nome, nascimento, cpf, telefone, email, altura, peso, plano, vencimento, status, fichaIds, professorId, treinosSemana, senha } = req.body;
   if (!nome?.trim()) return res.status(400).json({ erro: 'Nome é obrigatório.' });
   const fichaIdsArr = Array.isArray(fichaIds) ? fichaIds : [];
   const fichaIdPrimario = fichaIdsArr.length > 0 ? fichaIdsArr[0] : null;
   try {
+    // Guarda fichaIds antigas para detectar novas atribuições
+    const { rows: atual } = await pool.query(
+      'SELECT ficha_ids, email AS email_atual FROM alunos WHERE id=$1',
+      [id]
+    );
+    const fichaIdsAntigas = (atual[0]?.ficha_ids || []).map(String);
+
     let query, params;
     if (senha && senha.length >= 6) {
       const senhaHash = await bcrypt.hash(senha, 10);
@@ -142,13 +150,30 @@ router.put('/:id', async (req, res) => {
     const aluno = rows[0];
     await criarMensalidadeSeNecessario(aluno.id, aluno.plano, vencimento);
     res.json(mapAluno(aluno));
+
+    // Detecta fichas recém-atribuídas e notifica o aluno
+    const fichasNovas = fichaIdsArr.map(String).filter(fid => !fichaIdsAntigas.includes(fid));
+    if (fichasNovas.length > 0 && aluno.email) {
+      const { rows: fichasRows } = await pool.query(
+        'SELECT id, nome, objetivo FROM fichas WHERE id = ANY($1::int[])',
+        [fichasNovas.map(Number)]
+      );
+      for (const ficha of fichasRows) {
+        enviarEmailFichaAtribuida({
+          nomeAluno:  aluno.nome,
+          emailAluno: aluno.email,
+          nomeFicha:  ficha.nome,
+          objetivo:   ficha.objetivo,
+        }).catch(err => console.error('[alunos] Erro ao enviar email de ficha:', err.message));
+      }
+    }
   } catch (err) {
     handleDBError(err, res);
   }
 });
 
-// DELETE — excluir
-router.delete('/:id', async (req, res) => {
+// DELETE — excluir (somente dono e professor)
+router.delete('/:id', exigir('dono', 'professor'), async (req, res) => {
   const { id } = req.params;
   try {
     const { rowCount } = await pool.query('DELETE FROM alunos WHERE id=$1', [id]);

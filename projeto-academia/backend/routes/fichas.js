@@ -1,6 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db');
+const { enviarEmailTreinoAtualizado } = require('../utils/email');
+const { exigir } = require('../middleware/auth');
 
 function mapFicha(row, exercicios = []) {
   return {
@@ -29,8 +31,8 @@ function handleDBError(err, res) {
   res.status(500).json({ erro: 'Erro interno do servidor.' });
 }
 
-// GET — listar todas com exercícios
-router.get('/', async (_req, res) => {
+// GET — listar todas com exercícios (todos os tipos)
+router.get('/', exigir('dono', 'professor', 'aluno'), async (_req, res) => {
   try {
     const { rows: fichas }    = await pool.query('SELECT * FROM fichas ORDER BY id');
     const { rows: exercicios } = await pool.query('SELECT * FROM exercicios ORDER BY ficha_id, ordem');
@@ -40,18 +42,21 @@ router.get('/', async (_req, res) => {
   }
 });
 
-// POST — criar ficha + exercícios
-router.post('/', async (req, res) => {
+// POST — criar ficha + exercícios (somente dono e professor)
+router.post('/', exigir('dono', 'professor'), async (req, res) => {
   const { nome, objetivo, partes, exercicios } = req.body;
   if (!nome?.trim()) return res.status(400).json({ erro: 'Nome é obrigatório.' });
+
+  const professorId = req.usuario.tipo === 'professor' ? req.usuario.id : null;
+  const donoId      = req.usuario.tipo === 'dono'      ? req.usuario.id : null;
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
     const { rows } = await client.query(
-      `INSERT INTO fichas (nome, objetivo, partes) VALUES ($1, $2, $3) RETURNING *`,
-      [nome.trim(), objetivo || 'Hipertrofia', JSON.stringify(partes || [])],
+      `INSERT INTO fichas (nome, objetivo, partes, professor_id, dono_id) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [nome.trim(), objetivo || 'Hipertrofia', JSON.stringify(partes || []), professorId, donoId],
     );
     const ficha = rows[0];
 
@@ -78,8 +83,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT — atualizar ficha + sincronizar exercícios
-router.put('/:id', async (req, res) => {
+// PUT — atualizar ficha + sincronizar exercícios (somente dono e professor)
+router.put('/:id', exigir('dono', 'professor'), async (req, res) => {
   const { id } = req.params;
   const { nome, objetivo, partes, exercicios } = req.body;
   if (!nome?.trim()) return res.status(400).json({ erro: 'Nome é obrigatório.' });
@@ -116,6 +121,24 @@ router.put('/:id', async (req, res) => {
 
     await client.query('COMMIT');
     res.json(mapFicha(ficha, exRows.map(r => ({ ...r, ficha_id: ficha.id }))));
+
+    // Envia email para todos os alunos que possuem esta ficha
+    try {
+      const { rows: afetados } = await pool.query(
+        `SELECT nome, email FROM alunos WHERE ficha_ids @> $1::jsonb AND email IS NOT NULL`,
+        [JSON.stringify([Number(id)])],
+      );
+      for (const aluno of afetados) {
+        enviarEmailTreinoAtualizado({
+          nomeAluno: aluno.nome,
+          emailAluno: aluno.email,
+          nomeFicha: ficha.nome,
+          objetivo: ficha.objetivo,
+        }).catch(err => console.error('[fichas] erro ao enviar email:', err.message));
+      }
+    } catch (notifErr) {
+      console.error('[fichas] erro ao buscar alunos para notificação:', notifErr.message);
+    }
   } catch (err) {
     await client.query('ROLLBACK');
     handleDBError(err, res);
@@ -124,8 +147,8 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE — excluir ficha (exercícios em CASCADE)
-router.delete('/:id', async (req, res) => {
+// DELETE — excluir ficha (exercícios em CASCADE) (somente dono e professor)
+router.delete('/:id', exigir('dono', 'professor'), async (req, res) => {
   const { id } = req.params;
   try {
     const { rowCount } = await pool.query('DELETE FROM fichas WHERE id=$1', [id]);

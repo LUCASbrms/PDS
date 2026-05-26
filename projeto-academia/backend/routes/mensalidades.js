@@ -1,6 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db');
+const { exigir } = require('../middleware/auth');
+const { enviarEmailPagamentoConfirmado } = require('../utils/email');
 
 const MESES_POR_PLANO = { Mensal: 1, Trimestral: 3, Semestral: 6, Anual: 12 };
 
@@ -45,8 +47,8 @@ const COM_NOME = `
   JOIN alunos a ON a.id = m.aluno_id
 `;
 
-// GET — listar todas
-router.get('/', async (_req, res) => {
+// GET — listar todas (dono, professor e aluno — aluno vê as próprias no frontend)
+router.get('/', exigir('dono', 'professor', 'aluno'), async (_req, res) => {
   try {
     // Atualiza para "Atrasado" qualquer mensalidade Pendente com vencimento anterior a hoje
     await pool.query(`
@@ -64,8 +66,8 @@ router.get('/', async (_req, res) => {
   }
 });
 
-// POST — criar
-router.post('/', async (req, res) => {
+// POST — criar (somente dono)
+router.post('/', exigir('dono'), async (req, res) => {
   const { alunoId, plano, valor, vencimento, dataPagamento, status, observacoes } = req.body;
   if (!alunoId)    return res.status(400).json({ erro: 'Aluno é obrigatório.' });
   if (!vencimento) return res.status(400).json({ erro: 'Vencimento é obrigatório.' });
@@ -88,8 +90,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT — atualizar
-router.put('/:id', async (req, res) => {
+// PUT — atualizar (somente dono)
+router.put('/:id', exigir('dono'), async (req, res) => {
   const { id } = req.params;
   const { alunoId, plano, valor, vencimento, dataPagamento, status, observacoes } = req.body;
   if (!alunoId)    return res.status(400).json({ erro: 'Aluno é obrigatório.' });
@@ -111,7 +113,7 @@ router.put('/:id', async (req, res) => {
     if (!rows.length) return res.status(404).json({ erro: 'Mensalidade não encontrada.' });
     const m = rows[0];
 
-    // Se acabou de ser marcada como Pago, gera a próxima mensalidade
+    // Se acabou de ser marcada como Pago, gera a próxima mensalidade e envia email
     if (status === 'Pago') {
       await criarProximaMensalidade(
         m.aluno_id,
@@ -119,6 +121,24 @@ router.put('/:id', async (req, res) => {
         new Date(m.vencimento).toISOString().slice(0, 10),
         parseFloat(m.valor)
       );
+
+      // Busca email do aluno e envia confirmação de pagamento
+      const { rows: alunoRows } = await pool.query(
+        'SELECT nome, email FROM alunos WHERE id=$1',
+        [m.aluno_id]
+      );
+      const aluno = alunoRows[0];
+      if (aluno?.email) {
+        enviarEmailPagamentoConfirmado({
+          nomeAluno:     aluno.nome,
+          emailAluno:    aluno.email,
+          plano:         m.plano,
+          valor:         m.valor,
+          dataPagamento: dataPagamento || new Date().toISOString().slice(0, 10),
+        }).catch(err => console.error('[mensalidades] Erro ao enviar email de pagamento:', err.message, err.response || ''));
+      } else {
+        console.warn(`[mensalidades] Aluno id=${m.aluno_id} não tem email cadastrado — notificação não enviada`);
+      }
     }
 
     res.json(mapMensalidade(m));
@@ -128,8 +148,8 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE — excluir
-router.delete('/:id', async (req, res) => {
+// DELETE — excluir (somente dono)
+router.delete('/:id', exigir('dono'), async (req, res) => {
   const { id } = req.params;
   try {
     const { rowCount } = await pool.query('DELETE FROM mensalidades WHERE id=$1', [id]);

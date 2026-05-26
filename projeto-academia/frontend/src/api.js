@@ -1,7 +1,12 @@
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
+// sessionStorage é por aba — cada aba mantém seu próprio token independente
+export function setToken(t) {
+  if (t) sessionStorage.setItem('gymbalance_token', t);
+  else   sessionStorage.removeItem('gymbalance_token');
+}
 function getToken() {
-  return localStorage.getItem('gymbalance_token');
+  return sessionStorage.getItem('gymbalance_token') || localStorage.getItem('gymbalance_token');
 }
 
 async function request(method, path, body) {
@@ -73,9 +78,10 @@ export const mensalidadesApi = {
 };
 
 export const presencasApi = {
-  listar:  ()          => request('GET',    '/presencas'),
-  criar:   (dados)     => request('POST',   '/presencas',       dados),
-  excluir: (id)        => request('DELETE', `/presencas/${id}`),
+  listar:    ()                    => request('GET',    '/presencas'),
+  criar:     (dados)               => request('POST',   '/presencas',       dados),
+  excluir:   (id)                  => request('DELETE', `/presencas/${id}`),
+  historico: (alunoId, mes, ano)   => request('GET',    `/presencas/historico/${alunoId}?mes=${mes}&ano=${ano}`),
 };
 
 export const pagamentoApi = {
