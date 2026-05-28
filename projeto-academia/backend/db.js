@@ -4,18 +4,25 @@ require('dotenv').config();
 // ============================================================
 // Configuração do pool de conexões — PostgreSQL
 // ============================================================
-const pool = new Pool({
-  host:               process.env.DB_HOST     || 'localhost',
-  port:               parseInt(process.env.DB_PORT || '5432'),
-  database:           process.env.DB_NAME     || 'academia_db',
-  user:               process.env.DB_USER     || 'postgres',
-  password:           process.env.DB_PASSWORD || '',
-
-  // Tamanho do pool (ajuste conforme carga esperada)
-  max:                parseInt(process.env.DB_POOL_MAX  || '10'),
-  idleTimeoutMillis:  parseInt(process.env.DB_IDLE_TIMEOUT  || '30000'),
-  connectionTimeoutMillis: parseInt(process.env.DB_CONN_TIMEOUT || '5000'),
-});
+// Railway fornece DATABASE_URL automaticamente; variáveis individuais são usadas em dev
+const pool = process.env.DATABASE_URL
+  ? new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max:                parseInt(process.env.DB_POOL_MAX  || '10'),
+      idleTimeoutMillis:  parseInt(process.env.DB_IDLE_TIMEOUT  || '30000'),
+      connectionTimeoutMillis: parseInt(process.env.DB_CONN_TIMEOUT || '5000'),
+    })
+  : new Pool({
+      host:               process.env.DB_HOST     || 'localhost',
+      port:               parseInt(process.env.DB_PORT || '5432'),
+      database:           process.env.DB_NAME     || 'academia_db',
+      user:               process.env.DB_USER     || 'postgres',
+      password:           process.env.DB_PASSWORD || '',
+      max:                parseInt(process.env.DB_POOL_MAX  || '10'),
+      idleTimeoutMillis:  parseInt(process.env.DB_IDLE_TIMEOUT  || '30000'),
+      connectionTimeoutMillis: parseInt(process.env.DB_CONN_TIMEOUT || '5000'),
+    });
 
 // Loga erros inesperados em clientes ociosos
 pool.on('error', (err) => {
