@@ -29,15 +29,4 @@ pool.on('error', (err) => {
   console.error('[DB] Erro inesperado no pool:', err.message);
 });
 
-// Testa a conexão ao iniciar o servidor
-pool.connect()
-  .then((client) => {
-    console.log(`[DB] Conectado: ${process.env.DB_NAME || 'academia_db'} @ ${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || '5432'}`);
-    client.release();
-  })
-  .catch((err) => {
-    console.error('[DB] Falha ao conectar:', err.message);
-    process.exit(1); // Encerra se o banco não estiver disponível
-  });
-
 module.exports = pool;
