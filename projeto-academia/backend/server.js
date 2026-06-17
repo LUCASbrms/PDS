@@ -108,7 +108,7 @@ async function iniciar() {
 // Exporta o app para testes (sem iniciar o servidor)
 module.exports = app;
 
-// Inicia o servidor apenas quando executado diretamente
-if (require.main === module) {
+// Inicia o servidor apenas quando executado localmente (não no Vercel)
+if (require.main === module && !process.env.VERCEL) {
   iniciar();
 }
