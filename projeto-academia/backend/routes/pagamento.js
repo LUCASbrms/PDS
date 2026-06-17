@@ -6,8 +6,11 @@ const { criarProximaMensalidade } = require('./mensalidades');
 const { enviarEmailPagamentoConfirmado } = require('../utils/email');
 const { exigir } = require('../middleware/auth');
 
-const stripe       = Stripe(process.env.STRIPE_SECRET_KEY);
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+function getStripe() {
+  if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY não configurada.');
+  return Stripe(process.env.STRIPE_SECRET_KEY);
+}
 
 
 // POST /api/pagamento/criar-sessao (todos os tipos autenticados)
@@ -33,7 +36,7 @@ router.post('/criar-sessao', exigir('dono', 'professor', 'aluno'), async (req, r
       return res.status(400).json({ erro: 'Esta mensalidade já foi paga.' });
     }
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
       line_items: [
@@ -73,7 +76,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
   let event;
   try {
     event = secret
-      ? stripe.webhooks.constructEvent(req.body, sig, secret)
+      ? getStripe().webhooks.constructEvent(req.body, sig, secret)
       : JSON.parse(req.body);
   } catch (err) {
     console.error('[webhook] Assinatura inválida:', err.message);
