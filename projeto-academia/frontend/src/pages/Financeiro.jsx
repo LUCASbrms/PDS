@@ -242,15 +242,14 @@ export default function Financeiro({ mensalidades, setMensalidades, alunos }) {
         observacoes:   form.observacoes || null,
       };
       if (editandoId !== null) {
-        const atualizado = await mensalidadesApi.atualizar(editandoId, dados);
-        setMensalidades(prev => prev.map(m => m.id === editandoId ? atualizado : m));
+        await mensalidadesApi.atualizar(editandoId, dados);
         addToast('Pagamento atualizado com sucesso.', 'success');
       } else {
-        const novo = await mensalidadesApi.criar(dados);
-        setMensalidades(prev => [...prev, novo]);
+        await mensalidadesApi.criar(dados);
         addToast('Pagamento registrado com sucesso.', 'success');
       }
       fecharModal();
+      await recarregar();
     } catch (err) {
       addToast(err.message || 'Erro ao salvar.', 'error');
     } finally {
@@ -258,14 +257,21 @@ export default function Financeiro({ mensalidades, setMensalidades, alunos }) {
     }
   }
 
+  async function recarregar() {
+    try {
+      const lista = await mensalidadesApi.listar();
+      setMensalidades(lista);
+    } catch { /* silencioso */ }
+  }
+
   async function marcarComoPago(m) {
     try {
-      const atualizado = await mensalidadesApi.atualizar(m.id, {
+      await mensalidadesApi.atualizar(m.id, {
         alunoId: m.alunoId, plano: m.plano, valor: m.valor, vencimento: m.vencimento,
         dataPagamento: new Date().toISOString().slice(0, 10), status: 'Pago', observacoes: m.observacoes,
       });
-      setMensalidades(prev => prev.map(x => x.id === m.id ? atualizado : x));
       addToast('Mensalidade baixada como paga.', 'success');
+      await recarregar(); // recarrega para pegar a próxima mensalidade auto-criada
     } catch (err) { addToast(err.message || 'Erro ao atualizar.', 'error'); }
   }
 
@@ -273,9 +279,17 @@ export default function Financeiro({ mensalidades, setMensalidades, alunos }) {
     if (!confirm('Excluir este registro de pagamento?')) return;
     try {
       await mensalidadesApi.excluir(id);
-      setMensalidades(prev => prev.filter(m => m.id !== id));
       addToast('Registro excluído.', 'warning');
-    } catch (err) { addToast(err.message || 'Erro ao excluir.', 'error'); }
+      await recarregar();
+    } catch (err) {
+      // Se não existe mais no banco, remove do estado local e segue
+      if (err.message?.includes('não encontrada')) {
+        setMensalidades(prev => prev.filter(m => m.id !== id));
+        addToast('Registro removido.', 'warning');
+      } else {
+        addToast(err.message || 'Erro ao excluir.', 'error');
+      }
+    }
   }
 
   const summaryCards = [
