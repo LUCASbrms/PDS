@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Copy, Check, CreditCard, QrCode, Calendar, Tag,
+  CreditCard, Calendar, Tag,
   CheckCircle2, TrendingUp, AlertTriangle, Loader2,
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
-import { donoApi, pagamentoApi } from '../api';
+import { pagamentoApi } from '../api';
 
 function formatarData(str) {
   if (!str) return '—';
@@ -29,18 +29,8 @@ function StatusPagamentoBadge({ status }) {
 
 export default function Pagamento({ aluno, mensalidades = [] }) {
   const { addToast } = useToast();
-  const [copiado, setCopiado]       = useState(false);
   const [metodo, setMetodo]         = useState(null);
-  const [pixKey, setPixKey]         = useState('');
-  const [pixNome, setPixNome]       = useState('Academia GymBalance');
   const [pagando, setPagando]       = useState(false);
-
-  useEffect(() => {
-    donoApi.obter().then(dono => {
-      if (dono?.chavePix)     setPixKey(dono.chavePix);
-      if (dono?.nomeAcademia) setPixNome(dono.nomeAcademia);
-    }).catch(() => {});
-  }, []);
 
   // Todas as mensalidades deste aluno, mais recente primeiro
   const minhasMensalidades = useMemo(() =>
@@ -74,14 +64,6 @@ export default function Pagamento({ aluno, mensalidades = [] }) {
   const mensalidadeAtual = minhasMensalidades[0] ?? null;
   const mensalidadeSelecionada = mensalidadesPendentes.find(m => m.id === mensalidadeSelecionadaId) ?? null;
 
-
-  function copiarPix() {
-    navigator.clipboard.writeText(pixKey).then(() => {
-      setCopiado(true);
-      addToast('Chave PIX copiada!', 'success');
-      setTimeout(() => setCopiado(false), 2500);
-    });
-  }
 
   async function pagarComCartao() {
     if (!mensalidadeSelecionada) return;
@@ -224,23 +206,10 @@ export default function Pagamento({ aluno, mensalidades = [] }) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <button
-            onClick={() => setMetodo(metodo === 'pix' ? null : 'pix')}
-            className={`flex flex-col items-center gap-2 p-5 rounded-2xl border-2 transition-all duration-200 ${
-              metodo === 'pix'
-                ? 'border-green-500 bg-green-500/5 shadow-md shadow-green-500/10'
-                : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-green-500/50'
-            }`}
-          >
-            <QrCode size={28} className={metodo === 'pix' ? 'text-green-500' : 'text-zinc-400'} />
-            <span className={`text-sm font-bold ${metodo === 'pix' ? 'text-green-500' : 'text-zinc-600 dark:text-zinc-300'}`}>PIX</span>
-            <span className="text-xs text-zinc-400">Aprovação imediata</span>
-          </button>
-
+        <div className="mb-4">
           <button
             onClick={() => setMetodo(metodo === 'cartao' ? null : 'cartao')}
-            className={`flex flex-col items-center gap-2 p-5 rounded-2xl border-2 transition-all duration-200 ${
+            className={`w-full flex flex-col items-center gap-2 p-5 rounded-2xl border-2 transition-all duration-200 ${
               metodo === 'cartao'
                 ? 'border-blue-500 bg-blue-500/5 shadow-md shadow-blue-500/10'
                 : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-blue-500/50'
@@ -251,49 +220,6 @@ export default function Pagamento({ aluno, mensalidades = [] }) {
             <span className="text-xs text-zinc-400">Débito ou crédito</span>
           </button>
         </div>
-
-        {metodo === 'pix' && (
-          <div className="bg-white dark:bg-zinc-900 border border-green-500/30 rounded-2xl p-6 shadow-sm animate-fade-up">
-            <div className="flex items-center gap-2 mb-4">
-              <QrCode size={18} className="text-green-500" />
-              <h4 className="font-bold text-zinc-900 dark:text-white">Pagamento via PIX</h4>
-            </div>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
-              Copie a chave PIX abaixo e realize a transferência pelo app do seu banco.
-            </p>
-            <div className="bg-zinc-50 dark:bg-zinc-800 rounded-xl p-4 mb-3">
-              <p className="text-xs text-zinc-400 mb-1">Beneficiário</p>
-              <p className="font-semibold text-zinc-900 dark:text-white">{pixNome}</p>
-            </div>
-            <div className="bg-zinc-50 dark:bg-zinc-800 rounded-xl p-4 mb-3">
-              <p className="text-xs text-zinc-400 mb-1">Chave PIX</p>
-              <div className="flex items-center justify-between gap-3">
-                {pixKey
-                  ? <p className="font-mono font-semibold text-zinc-900 dark:text-white">{pixKey}</p>
-                  : <p className="text-sm text-zinc-400 italic">Não configurada — contate a recepção.</p>
-                }
-                <button
-                  onClick={copiarPix}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
-                    copiado ? 'bg-green-500 text-white' : 'bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500 hover:text-white'
-                  } ${!pixKey ? 'opacity-40 pointer-events-none' : ''}`}
-                >
-                  {copiado ? <Check size={13} /> : <Copy size={13} />}
-                  {copiado ? 'Copiado!' : 'Copiar'}
-                </button>
-              </div>
-            </div>
-            {mensalidadeSelecionada && (
-              <div className="bg-zinc-50 dark:bg-zinc-800 rounded-xl p-4">
-                <p className="text-xs text-zinc-400 mb-1">Valor</p>
-                <p className="text-xl font-black text-green-500">R$ {Number(mensalidadeSelecionada.valor).toFixed(2)}</p>
-              </div>
-            )}
-            <p className="text-xs text-zinc-400 mt-4 text-center">
-              Após o pagamento, apresente o comprovante na recepção ou envie pelo WhatsApp da academia.
-            </p>
-          </div>
-        )}
 
         {metodo === 'cartao' && (
           <div className="bg-white dark:bg-zinc-900 border border-blue-500/30 rounded-2xl p-6 shadow-sm animate-fade-up">
