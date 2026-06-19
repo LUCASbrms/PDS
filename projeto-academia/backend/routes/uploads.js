@@ -1,47 +1,36 @@
-const express = require('express');
-const router  = express.Router();
-const multer  = require('multer');
-const path    = require('path');
-const fs      = require('fs');
-const pool    = require('../db');
+const express  = require('express');
+const router   = express.Router();
+const multer   = require('multer');
+const pool     = require('../db');
 const { exigir } = require('../middleware/auth');
 
-const UPLOADS_DIR = path.join(__dirname, '../uploads');
+// ─── Multer com memória (sem disco) ───────────────────────────────────────────
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    const permitidos = ['image/jpeg', 'image/png', 'image/webp'];
+    if (permitidos.includes(file.mimetype)) return cb(null, true);
+    cb(new Error('Formato inválido. Use JPG, PNG ou WEBP.'));
+  },
+});
 
-const fileFilter = (_req, file, cb) => {
-  const permitidos = ['.jpg', '.jpeg', '.png', '.webp'];
-  const ext = path.extname(file.originalname).toLowerCase();
-  if (permitidos.includes(ext)) return cb(null, true);
-  cb(new Error('Formato inválido. Use JPG, PNG ou WEBP.'));
-};
-
-function criarUpload(prefixo) {
-  return multer({
-    storage: multer.diskStorage({
-      destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-      filename: (_req, file, cb) => {
-        const ext = path.extname(file.originalname).toLowerCase();
-        cb(null, `${prefixo}_${Date.now()}${ext}`);
-      },
-    }),
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
-    fileFilter,
-  });
-}
-
-async function salvarFoto(req, res, tabela, idParam) {
+// ─── Salva ou substitui foto no banco ─────────────────────────────────────────
+async function salvarFoto(req, res, entidadeTipo, tabela, idParam) {
   const id = req.params[idParam];
   if (!req.file) return res.status(400).json({ erro: 'Nenhuma foto enviada.' });
 
   try {
-    const { rows } = await pool.query(`SELECT foto_url FROM ${tabela} WHERE id=$1`, [id]);
-    if (rows.length && rows[0].foto_url) {
-      const antigaPath = path.join(UPLOADS_DIR, path.basename(rows[0].foto_url));
-      if (fs.existsSync(antigaPath)) fs.unlinkSync(antigaPath);
-    }
+    await pool.query(
+      `INSERT INTO fotos (entidade_tipo, entidade_id, mime_type, dados)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (entidade_tipo, entidade_id)
+       DO UPDATE SET mime_type = $3, dados = $4, criado_em = NOW()`,
+      [entidadeTipo, id, req.file.mimetype, req.file.buffer],
+    );
 
-    const fotoUrl = `/uploads/${req.file.filename}`;
-    await pool.query(`UPDATE ${tabela} SET foto_url=$1 WHERE id=$2`, [fotoUrl, id]);
+    const fotoUrl = `/api/uploads/imagem/${entidadeTipo}/${id}`;
+    await pool.query(`UPDATE ${tabela} SET foto_url = $1 WHERE id = $2`, [fotoUrl, id]);
 
     res.json({ fotoUrl });
   } catch (err) {
@@ -50,8 +39,28 @@ async function salvarFoto(req, res, tabela, idParam) {
   }
 }
 
-// POST /api/uploads/foto/:alunoId
-// dono e professor podem atualizar qualquer aluno; aluno só atualiza a própria foto
+// ─── GET /api/uploads/imagem/:tipo/:id — serve a imagem do banco ──────────────
+// Rota pública — sem autenticação (apenas leitura de imagem)
+router.get('/imagem/:tipo/:id', async (req, res) => {
+  const { tipo, id } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT mime_type, dados FROM fotos WHERE entidade_tipo = $1 AND entidade_id = $2`,
+      [tipo, id],
+    );
+    if (!rows.length) return res.status(404).json({ erro: 'Imagem não encontrada.' });
+
+    const { mime_type, dados } = rows[0];
+    res.set('Content-Type', mime_type);
+    res.set('Cache-Control', 'public, max-age=31536000, immutable'); // cache 1 ano no browser
+    res.send(dados);
+  } catch (err) {
+    console.error('[uploads/imagem]', err.message);
+    res.status(500).json({ erro: 'Erro ao carregar imagem.' });
+  }
+});
+
+// ─── POST /api/uploads/foto/:alunoId ─────────────────────────────────────────
 router.post(
   '/foto/:alunoId',
   exigir('dono', 'professor', 'aluno'),
@@ -61,12 +70,11 @@ router.post(
     }
     next();
   },
-  criarUpload('aluno').single('foto'),
-  (req, res) => salvarFoto(req, res, 'alunos', 'alunoId'),
+  upload.single('foto'),
+  (req, res) => salvarFoto(req, res, 'aluno', 'alunos', 'alunoId'),
 );
 
-// POST /api/uploads/professor/:professorId
-// dono pode atualizar qualquer professor; professor só atualiza a própria foto
+// ─── POST /api/uploads/professor/:professorId ─────────────────────────────────
 router.post(
   '/professor/:professorId',
   exigir('dono', 'professor'),
@@ -76,16 +84,16 @@ router.post(
     }
     next();
   },
-  criarUpload('professor').single('foto'),
-  (req, res) => salvarFoto(req, res, 'professores', 'professorId'),
+  upload.single('foto'),
+  (req, res) => salvarFoto(req, res, 'professor', 'professores', 'professorId'),
 );
 
-// POST /api/uploads/dono/:donoId (somente dono)
+// ─── POST /api/uploads/dono/:donoId ──────────────────────────────────────────
 router.post(
   '/dono/:donoId',
   exigir('dono'),
-  criarUpload('dono').single('foto'),
-  (req, res) => salvarFoto(req, res, 'donos', 'donoId'),
+  upload.single('foto'),
+  (req, res) => salvarFoto(req, res, 'dono', 'donos', 'donoId'),
 );
 
 module.exports = router;

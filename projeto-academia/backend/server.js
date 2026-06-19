@@ -11,10 +11,10 @@ const donosRouter       = require('./routes/donos');
 const fichasRouter        = require('./routes/fichas');
 const mensalidadesRouter  = require('./routes/mensalidades');
 const presencasRouter     = require('./routes/presencas');
-const pagamentoRouter     = require('./routes/pagamento');
-const uploadsRouter       = require('./routes/uploads');
-const { autenticar }      = require('./middleware/auth');
-const { iniciarCronNotificacoes } = require('./utils/notificacoes');
+const pagamentoRouter       = require('./routes/pagamento');
+const uploadsRouter         = require('./routes/uploads');
+const notificacoesRouter    = require('./routes/notificacoes');
+const { autenticar }        = require('./middleware/auth');
 
 const app = express();
 
@@ -28,6 +28,9 @@ app.use('/api/pagamento/webhook', express.raw({ type: 'application/json' }));
 
 app.use(express.json());
 
+// Imagens do banco — rota pública (sem auth), antes do middleware de autenticação
+app.use('/api/uploads/imagem', uploadsRouter);
+
 // ─── Middleware de autenticação seletiva ──────────────────────────────────────
 const ROTAS_PUBLICAS = [
   { method: 'POST', path: '/api/donos/login' },
@@ -36,6 +39,7 @@ const ROTAS_PUBLICAS = [
   { method: 'GET',  path: '/api/donos' },
   { method: 'POST', path: '/api/donos' },
   { method: 'POST', path: '/api/pagamento/webhook' },
+  { method: 'GET',  path: '/api/notificacoes/verificar' },
 ];
 
 app.use((req, res, next) => {
@@ -53,8 +57,9 @@ app.use('/api/donos',        donosRouter);
 app.use('/api/fichas',       fichasRouter);
 app.use('/api/mensalidades', mensalidadesRouter);
 app.use('/api/presencas',    presencasRouter);
-app.use('/api/pagamento',    pagamentoRouter);
-app.use('/api/uploads',      uploadsRouter);
+app.use('/api/pagamento',      pagamentoRouter);
+app.use('/api/uploads',        uploadsRouter);
+app.use('/api/notificacoes',   notificacoesRouter);
 
 app.get('/', (_req, res) => res.send('FitSystem API rodando! 🚀'));
 
@@ -90,14 +95,24 @@ async function iniciar() {
     await pool.query(`ALTER TABLE donos        ADD COLUMN IF NOT EXISTS foto_url     VARCHAR(255)`);
     // Popula ficha_ids a partir de ficha_id para registros antigos
     await pool.query(`UPDATE alunos SET ficha_ids = jsonb_build_array(ficha_id) WHERE ficha_id IS NOT NULL AND ficha_ids = '[]'::jsonb`);
+    // Tabela de fotos no banco (substitui armazenamento em disco)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS fotos (
+        id           SERIAL PRIMARY KEY,
+        entidade_tipo VARCHAR(20)  NOT NULL,
+        entidade_id  INTEGER      NOT NULL,
+        mime_type    VARCHAR(50)  NOT NULL,
+        dados        BYTEA        NOT NULL,
+        criado_em    TIMESTAMP    DEFAULT NOW(),
+        UNIQUE (entidade_tipo, entidade_id)
+      )
+    `);
     console.log('✓ Migrações aplicadas');
   } catch (err) {
     console.error('✗ Erro ao conectar ao banco de dados:', err.message);
     console.error('  Verifique as variáveis no arquivo .env e tente novamente.');
     process.exit(1);
   }
-
-  iniciarCronNotificacoes();
 
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
