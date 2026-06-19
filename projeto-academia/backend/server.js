@@ -120,6 +120,20 @@ async function iniciar() {
   });
 }
 
+// ─── Migração da tabela fotos — roda em qualquer ambiente ────────────────────
+pool.query(`
+  CREATE TABLE IF NOT EXISTS fotos (
+    id            SERIAL PRIMARY KEY,
+    entidade_tipo VARCHAR(20)  NOT NULL,
+    entidade_id   INTEGER      NOT NULL,
+    mime_type     VARCHAR(50)  NOT NULL,
+    dados         BYTEA        NOT NULL,
+    criado_em     TIMESTAMP    DEFAULT NOW(),
+    UNIQUE (entidade_tipo, entidade_id)
+  )
+`).then(() => console.log('✓ Tabela fotos OK'))
+  .catch(err => console.error('[migração fotos]', err.message));
+
 // Exporta o app para testes (sem iniciar o servidor)
 module.exports = app;
 
