@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Save, Building2, User, Eye, EyeOff, CheckCircle2, QrCode, Camera, X } from 'lucide-react';
+import { AlertCircle, Save, Building2, User, Eye, EyeOff, CheckCircle2, Camera, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { donoApi, uploadsApi } from '../api';
 
@@ -44,7 +44,7 @@ function FieldError({ msg }) {
   );
 }
 
-const FORM_VAZIO = { nome: '', email: '', senha: '', confirmarSenha: '', telefone: '', cpf: '', nomeAcademia: '', chavePix: '' };
+const FORM_VAZIO = { nome: '', email: '', senha: '', confirmarSenha: '', telefone: '', cpf: '', nomeAcademia: '' };
 
 export default function Configuracoes({ aoRegistrar, onAtualizarDono }) {
   const { addToast } = useToast();
@@ -73,7 +73,6 @@ export default function Configuracoes({ aoRegistrar, onAtualizarDono }) {
             telefone:      dono.telefone      || '',
             cpf:           dono.cpf           || '',
             nomeAcademia:  dono.nomeAcademia  || '',
-            chavePix:      dono.chavePix      || '',
           });
           if (dono.fotoUrl) { setFotoPreview(`${API_BASE}${dono.fotoUrl}`); setFotoUrlAtual(dono.fotoUrl); }
         }
@@ -87,11 +86,28 @@ export default function Configuracoes({ aoRegistrar, onAtualizarDono }) {
     if (erros[campo]) setErros(prev => ({ ...prev, [campo]: null }));
   }
 
-  function onSelecionarFoto(e) {
+  async function onSelecionarFoto(e) {
     const arquivo = e.target.files[0];
     if (!arquivo) return;
-    setFotoArquivo(arquivo);
     setFotoPreview(URL.createObjectURL(arquivo));
+
+    if (!donoId) {
+      // Primeiro cadastro: guarda para enviar junto com o registro
+      setFotoArquivo(arquivo);
+      return;
+    }
+
+    try {
+      const { fotoUrl } = await uploadsApi.enviarFotoDono(donoId, arquivo);
+      setFotoPreview(`${API_BASE}${fotoUrl}`);
+      setFotoUrlAtual(fotoUrl);
+      setFotoArquivo(null);
+      onAtualizarDono?.({ fotoUrl });
+      addToast('Foto atualizada!', 'success');
+    } catch (err) {
+      addToast(err.message || 'Erro ao enviar foto.', 'error');
+      setFotoPreview(fotoUrlAtual ? `${API_BASE}${fotoUrlAtual}` : null);
+    }
   }
 
   function removerFoto() {
@@ -137,7 +153,6 @@ export default function Configuracoes({ aoRegistrar, onAtualizarDono }) {
       telefone:     form.telefone || undefined,
       cpf:          form.cpf     || undefined,
       nomeAcademia: form.nomeAcademia || undefined,
-      chavePix:     form.chavePix     || undefined,
     };
 
     try {
@@ -152,16 +167,21 @@ export default function Configuracoes({ aoRegistrar, onAtualizarDono }) {
         aoRegistrar?.();
       }
 
-      let fotoUrlFinal = null;
-      if (fotoArquivo && dono?.id) {
-        const { fotoUrl } = await uploadsApi.enviarFotoDono(dono.id, fotoArquivo);
-        setFotoPreview(`${API_BASE}${fotoUrl}`);
-        setFotoUrlAtual(fotoUrl);
-        setFotoArquivo(null);
-        fotoUrlFinal = fotoUrl;
+      // Para novo cadastro, envia a foto agora que temos o ID
+      let fotoUrlFinal = fotoUrlAtual;
+      if (!donoId && fotoArquivo && dono?.id) {
+        try {
+          const { fotoUrl } = await uploadsApi.enviarFotoDono(dono.id, fotoArquivo);
+          setFotoPreview(`${API_BASE}${fotoUrl}`);
+          setFotoUrlAtual(fotoUrl);
+          setFotoArquivo(null);
+          fotoUrlFinal = fotoUrl;
+        } catch (err) {
+          addToast('Perfil salvo, mas erro ao enviar foto.', 'error');
+        }
       }
 
-      onAtualizarDono?.({ nome: payload.nome, fotoUrl: fotoUrlFinal ?? fotoUrlAtual });
+      onAtualizarDono?.({ nome: payload.nome, fotoUrl: fotoUrlFinal });
       setForm(prev => ({ ...prev, senha: '', confirmarSenha: '' }));
       setSalvoOk(true);
       setTimeout(() => setSalvoOk(false), 3000);
@@ -351,28 +371,13 @@ export default function Configuracoes({ aoRegistrar, onAtualizarDono }) {
             <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest">Dados da Academia</h3>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className={LBL}>Nome da Academia</label>
-              <input
-                type="text" maxLength={100} value={form.nomeAcademia}
-                onChange={e => set('nomeAcademia', e.target.value)}
-                className={inputCls(false)} placeholder="Ex: Academia GymBalance"
-              />
-            </div>
-            <div>
-              <label className={LBL}>Chave PIX</label>
-              <div className="relative">
-                <QrCode size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
-                <input
-                  type="text" maxLength={100} value={form.chavePix}
-                  onChange={e => set('chavePix', e.target.value)}
-                  className={inputCls(false) + ' pl-9'}
-                  placeholder="CPF, CNPJ, e-mail ou telefone"
-                />
-              </div>
-              <p className="text-xs text-zinc-400 mt-1">Exibida na tela de pagamento do aluno.</p>
-            </div>
+          <div>
+            <label className={LBL}>Nome da Academia</label>
+            <input
+              type="text" maxLength={100} value={form.nomeAcademia}
+              onChange={e => set('nomeAcademia', e.target.value)}
+              className={inputCls(false)} placeholder="Ex: Academia GymBalance"
+            />
           </div>
         </div>
 

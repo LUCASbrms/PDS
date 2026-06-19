@@ -91,7 +91,7 @@ export const pagamentoApi = {
 async function enviarFotoParaRota(rota, arquivo) {
   const form = new FormData();
   form.append('foto', arquivo);
-  const token = localStorage.getItem('gymbalance_token');
+  const token = getToken();
   const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
   const res  = await fetch(`${BASE}${rota}`, {
     method: 'POST',
