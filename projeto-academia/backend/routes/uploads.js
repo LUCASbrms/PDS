@@ -40,8 +40,8 @@ async function salvarFoto(req, res, entidadeTipo, tabela, idParam) {
 }
 
 // ─── GET /api/uploads/imagem/:tipo/:id — serve a imagem do banco ──────────────
-// Rota pública — sem autenticação (apenas leitura de imagem)
-router.get('/imagem/:tipo/:id', async (req, res) => {
+// Rota pública — montada em /api/uploads/imagem, então path interno é /:tipo/:id
+router.get('/:tipo/:id', async (req, res) => {
   const { tipo, id } = req.params;
   try {
     const { rows } = await pool.query(
