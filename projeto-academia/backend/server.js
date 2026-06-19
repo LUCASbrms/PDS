@@ -131,8 +131,23 @@ pool.query(`
     criado_em     TIMESTAMP    DEFAULT NOW(),
     UNIQUE (entidade_tipo, entidade_id)
   )
-`).then(() => console.log('✓ Tabela fotos OK'))
-  .catch(err => console.error('[migração fotos]', err.message));
+`).then(() =>
+  // Garante o constraint UNIQUE caso a tabela já existia sem ele
+  pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'fotos_entidade_tipo_entidade_id_key'
+      ) THEN
+        ALTER TABLE fotos ADD CONSTRAINT fotos_entidade_tipo_entidade_id_key
+          UNIQUE (entidade_tipo, entidade_id);
+      END IF;
+    END $$;
+  `)
+)
+.then(() => console.log('✓ Tabela fotos OK'))
+.catch(err => console.error('[migração fotos]', err.message));
 
 // Exporta o app para testes (sem iniciar o servidor)
 module.exports = app;

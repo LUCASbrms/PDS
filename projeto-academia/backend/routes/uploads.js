@@ -29,7 +29,7 @@ async function salvarFoto(req, res, entidadeTipo, tabela, idParam) {
       [entidadeTipo, id, req.file.mimetype, req.file.buffer],
     );
 
-    const fotoUrl = `/api/uploads/imagem/${entidadeTipo}/${id}`;
+    const fotoUrl = `/api/uploads/imagem/${entidadeTipo}/${id}?v=${Date.now()}`;
     await pool.query(`UPDATE ${tabela} SET foto_url = $1 WHERE id = $2`, [fotoUrl, id]);
 
     res.json({ fotoUrl });
