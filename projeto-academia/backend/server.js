@@ -120,34 +120,41 @@ async function iniciar() {
   });
 }
 
-// ─── Migração da tabela fotos — roda em qualquer ambiente ────────────────────
-pool.query(`
-  CREATE TABLE IF NOT EXISTS fotos (
-    id            SERIAL PRIMARY KEY,
-    entidade_tipo VARCHAR(20)  NOT NULL,
-    entidade_id   INTEGER      NOT NULL,
-    mime_type     VARCHAR(50)  NOT NULL,
-    dados         BYTEA        NOT NULL,
-    criado_em     TIMESTAMP    DEFAULT NOW(),
-    UNIQUE (entidade_tipo, entidade_id)
-  )
-`).then(() =>
-  // Garante o constraint UNIQUE caso a tabela já existia sem ele
-  pool.query(`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'fotos_entidade_tipo_entidade_id_key'
-      ) THEN
-        ALTER TABLE fotos ADD CONSTRAINT fotos_entidade_tipo_entidade_id_key
-          UNIQUE (entidade_tipo, entidade_id);
-      END IF;
-    END $$;
-  `)
-)
-.then(() => console.log('✓ Tabela fotos OK'))
-.catch(err => console.error('[migração fotos]', err.message));
+// ─── Migrações que rodam em qualquer ambiente (local e Vercel) ───────────────
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS fotos (
+        id            SERIAL PRIMARY KEY,
+        entidade_tipo VARCHAR(20)  NOT NULL,
+        entidade_id   INTEGER      NOT NULL,
+        mime_type     VARCHAR(50)  NOT NULL,
+        dados         BYTEA        NOT NULL,
+        criado_em     TIMESTAMP    DEFAULT NOW(),
+        UNIQUE (entidade_tipo, entidade_id)
+      )
+    `);
+    // Garante o constraint UNIQUE caso a tabela já existia sem ele
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'fotos_entidade_tipo_entidade_id_key'
+        ) THEN
+          ALTER TABLE fotos ADD CONSTRAINT fotos_entidade_tipo_entidade_id_key
+            UNIQUE (entidade_tipo, entidade_id);
+        END IF;
+      END $$;
+    `);
+    await pool.query(`ALTER TABLE donos       ADD COLUMN IF NOT EXISTS foto_url VARCHAR(255)`);
+    await pool.query(`ALTER TABLE alunos      ADD COLUMN IF NOT EXISTS foto_url VARCHAR(255)`);
+    await pool.query(`ALTER TABLE professores ADD COLUMN IF NOT EXISTS foto_url VARCHAR(255)`);
+    console.log('✓ Migrações globais OK (fotos + foto_url)');
+  } catch (err) {
+    console.error('[migração global]', err.message);
+  }
+})();
 
 // Exporta o app para testes (sem iniciar o servidor)
 module.exports = app;
