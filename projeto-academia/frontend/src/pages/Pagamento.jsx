@@ -29,7 +29,6 @@ function StatusPagamentoBadge({ status }) {
 
 export default function Pagamento({ aluno, mensalidades = [] }) {
   const { addToast } = useToast();
-  const [metodo, setMetodo]         = useState(null);
   const [pagando, setPagando]       = useState(false);
 
   // Todas as mensalidades deste aluno, mais recente primeiro
@@ -206,61 +205,44 @@ export default function Pagamento({ aluno, mensalidades = [] }) {
           </div>
         )}
 
-        <div className="mb-4">
-          <button
-            onClick={() => setMetodo(metodo === 'cartao' ? null : 'cartao')}
-            className={`w-full flex flex-col items-center gap-2 p-5 rounded-2xl border-2 transition-all duration-200 ${
-              metodo === 'cartao'
-                ? 'border-blue-500 bg-blue-500/5 shadow-md shadow-blue-500/10'
-                : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-blue-500/50'
-            }`}
-          >
-            <CreditCard size={28} className={metodo === 'cartao' ? 'text-blue-500' : 'text-zinc-400'} />
-            <span className={`text-sm font-bold ${metodo === 'cartao' ? 'text-blue-500' : 'text-zinc-600 dark:text-zinc-300'}`}>Cartão</span>
-            <span className="text-xs text-zinc-400">Débito ou crédito</span>
-          </button>
-        </div>
-
-        {metodo === 'cartao' && (
-          <div className="bg-white dark:bg-zinc-900 border border-blue-500/30 rounded-2xl p-6 shadow-sm animate-fade-up">
-            <div className="flex items-center gap-2 mb-4">
-              <CreditCard size={18} className="text-blue-500" />
-              <h4 className="font-bold text-zinc-900 dark:text-white">Pagamento com Cartão</h4>
-            </div>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
-              Pague online com segurança via Stripe. Aceitamos débito e crédito.
-            </p>
-
-            {mensalidadeSelecionada ? (
-              <>
-                <div className="bg-zinc-50 dark:bg-zinc-800 rounded-xl p-4 mb-4">
-                  <p className="text-xs text-zinc-400 mb-1">Valor a pagar · venc. {formatarData(mensalidadeSelecionada.vencimento)}</p>
-                  <p className="text-2xl font-black text-blue-500">R$ {Number(mensalidadeSelecionada.valor).toFixed(2)}</p>
-                </div>
-                <button
-                  onClick={pagarComCartao}
-                  disabled={pagando}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl shadow-md shadow-blue-500/25 transition-all duration-200 hover:-translate-y-0.5"
-                >
-                  {pagando
-                    ? <><Loader2 size={16} className="animate-spin" /> Redirecionando…</>
-                    : <><CreditCard size={16} /> Pagar agora</>
-                  }
-                </button>
-                <p className="text-xs text-zinc-400 mt-3 text-center">
-                  Você será redirecionado para o ambiente seguro do Stripe.
-                </p>
-              </>
-            ) : (
-              <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 rounded-xl p-4">
-                <CheckCircle2 size={20} className="text-green-500 shrink-0" />
-                <p className="text-sm font-semibold text-green-600 dark:text-green-400">
-                  Nenhuma mensalidade pendente. Tudo em dia!
-                </p>
-              </div>
-            )}
+        <div className="bg-white dark:bg-zinc-900 border border-blue-500/30 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <CreditCard size={18} className="text-blue-500" />
+            <h4 className="font-bold text-zinc-900 dark:text-white">Pagamento com Cartão</h4>
           </div>
-        )}
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
+            Pague online com segurança via Stripe. Aceitamos débito e crédito.
+          </p>
+
+          {mensalidadeSelecionada ? (
+            <>
+              <div className="bg-zinc-50 dark:bg-zinc-800 rounded-xl p-4 mb-4">
+                <p className="text-xs text-zinc-400 mb-1">Valor a pagar · venc. {formatarData(mensalidadeSelecionada.vencimento)}</p>
+                <p className="text-2xl font-black text-blue-500">R$ {Number(mensalidadeSelecionada.valor).toFixed(2)}</p>
+              </div>
+              <button
+                onClick={pagarComCartao}
+                disabled={pagando}
+                className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl shadow-md shadow-blue-500/25 transition-all duration-200 hover:-translate-y-0.5"
+              >
+                {pagando
+                  ? <><Loader2 size={16} className="animate-spin" /> Redirecionando…</>
+                  : <><CreditCard size={16} /> Pagar agora</>
+                }
+              </button>
+              <p className="text-xs text-zinc-400 mt-3 text-center">
+                Você será redirecionado para o ambiente seguro do Stripe.
+              </p>
+            </>
+          ) : (
+            <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 rounded-xl p-4">
+              <CheckCircle2 size={20} className="text-green-500 shrink-0" />
+              <p className="text-sm font-semibold text-green-600 dark:text-green-400">
+                Nenhuma mensalidade pendente. Tudo em dia!
+              </p>
+            </div>
+          )}
+        </div>
       </section>
 
     </div>
